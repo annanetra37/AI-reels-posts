@@ -45,13 +45,14 @@ ${bizDescriptions}
 **Target languages:** ${languages.join(', ')}
 
 INSTRUCTIONS:
-1. Write a captivating, scroll-stopping caption for each requested language.
-2. The caption must match the post style perfectly.
-3. Use line breaks, emojis strategically (not excessively), and a strong hook in the first line.
-4. Include a clear call-to-action.
-5. Generate 20-30 highly relevant hashtags mixing popular, niche, and branded tags.
-6. If multiple businesses are featured (e.g., "Top X" style), reference each one naturally.
-7. The tone should be trendy, authentic, and engaging — like a top-tier social media manager.
+1. Write a SHORT, punchy caption for each requested language — MAX 2-3 sentences (under 150 characters ideally).
+2. Instagram users don't read long captions. Keep it snappy and scroll-stopping.
+3. One strong hook line + one CTA line is the ideal structure.
+4. Use 1-2 emojis max, strategically placed.
+5. The caption must match the post style perfectly.
+6. Generate 15-20 highly relevant hashtags mixing popular, niche, and branded tags.
+7. If multiple businesses are featured (e.g., "Top X" style), reference them briefly — don't write a paragraph about each.
+8. The tone should be trendy, authentic, and engaging — like a top-tier social media manager.
 
 Respond in this exact JSON format:
 {

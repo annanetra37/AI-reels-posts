@@ -73,24 +73,39 @@ router.post('/generate', async (req, res) => {
         send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
 
         if (postType === 'reel') {
-          // Generate video — require a public reference image to avoid paying for generic videos
-          const rawPhoto = selectedPhotos?.[0] || null;
-          const referenceImage = toPublicUrl(rawPhoto);
-          if (!referenceImage) {
-            send('log', { level: 'warn', message: 'No public reference image available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
-          } else {
-            send('log', { level: 'info', message: `Calling LumaLabs video API with reference image...` });
-            const gen = await generateVideo(lumaResult.prompt, referenceImage);
-            send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
+          // Convert all selected photos to public URLs
+          const publicPhotos = (selectedPhotos || [])
+            .map(p => toPublicUrl(p))
+            .filter(Boolean);
 
-            const completed = await pollGeneration(gen.id);
-            lumaResultUrl = completed.assets?.video || completed.video?.url || null;
-            if (lumaResultUrl) {
-              mediaUrls = [lumaResultUrl];
-              send('log', { level: 'success', message: `Video generated: ${lumaResultUrl}` });
-            } else {
-              send('log', { level: 'warn', message: 'LumaLabs generation completed but no video URL returned' });
+          if (publicPhotos.length === 0) {
+            send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
+          } else {
+            const segments = lumaResult.segments || [{ prompt: lumaResult.prompt }];
+            send('log', { level: 'info', message: `Generating ${publicPhotos.length} video segment(s) — one per selected photo...` });
+
+            for (let i = 0; i < publicPhotos.length; i++) {
+              const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
+              const startImage = publicPhotos[i];
+              // Use next photo as end keyframe for smooth transitions (if available)
+              const endImage = publicPhotos[i + 1] || null;
+
+              send('log', { level: 'info', message: `Segment ${i + 1}/${publicPhotos.length}: generating video (start: photo ${i + 1}${endImage ? `, end: photo ${i + 2}` : ''})...` });
+              const gen = await generateVideo(segmentPrompt, startImage, endImage, '5s');
+              send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
+
+              const completed = await pollGeneration(gen.id);
+              const videoUrl = completed.assets?.video || completed.video?.url || null;
+              if (videoUrl) {
+                mediaUrls.push(videoUrl);
+                send('log', { level: 'success', message: `Segment ${i + 1} ready: ${videoUrl}` });
+              } else {
+                send('log', { level: 'warn', message: `Segment ${i + 1}: LumaLabs completed but no video URL returned` });
+              }
             }
+
+            lumaResultUrl = mediaUrls[0] || null;
+            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${publicPhotos.length * 5}s reel` });
           }
         } else if (postType === 'carousel') {
           // Generate images for each slide

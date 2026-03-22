@@ -29,14 +29,22 @@ async function lumaGet(path) {
 
 /**
  * Generate a video using LumaLabs Dream Machine.
+ * @param {string} prompt - The generation prompt
+ * @param {string} startImageUrl - Image for frame0 (start of video)
+ * @param {string} [endImageUrl] - Image for frame1 (end of video) — creates a transition
+ * @param {string} [duration] - '5s' or '9s' (default '5s')
  */
-async function generateVideo(prompt, imageUrl) {
+async function generateVideo(prompt, startImageUrl, endImageUrl, duration = '5s') {
+  const keyframes = {};
+  if (startImageUrl) keyframes.frame0 = { type: 'image', url: startImageUrl };
+  if (endImageUrl) keyframes.frame1 = { type: 'image', url: endImageUrl };
+
   const body = {
     prompt,
     model: 'ray-flash-2',
     resolution: '720p',
-    duration: '5s',
-    ...(imageUrl ? { keyframes: { frame0: { type: 'image', url: imageUrl } } } : {}),
+    duration,
+    ...(Object.keys(keyframes).length > 0 ? { keyframes } : {}),
   };
   const generation = await lumaFetch('/generations', body);
   return generation;
