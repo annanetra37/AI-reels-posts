@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db/pool');
+const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
@@ -27,7 +27,7 @@ router.post('/generate', async (req, res) => {
   try {
     // Step 1: Fetch business details
     send('status', { stage: 'fetching', message: '📦 Loading business details...' });
-    const { rows: businesses } = await pool.query(
+    const { rows: businesses } = await smePool.query(
       'SELECT id, name, category, description, short_tagline, tags, emoji, city, country FROM businesses WHERE id = ANY($1)',
       [businessIds]
     );
@@ -60,7 +60,7 @@ router.post('/generate', async (req, res) => {
 
     // Step 4: Save to DB
     send('status', { stage: 'saving', message: '💾 Saving your post...' });
-    const { rows: saved } = await pool.query(`
+    const { rows: saved } = await postsPool.query(`
       INSERT INTO generated_posts
         (business_ids, post_type, post_style, languages, caption, hashtags,
          selected_photos, luma_prompt, status)
@@ -95,7 +95,7 @@ router.post('/generate', async (req, res) => {
 // POST /api/posts/:id/publish — publish to Instagram via Meta Graph API
 router.post('/:id/publish', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
+    const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Post not found' });
 
     const post = rows[0];
@@ -107,7 +107,7 @@ router.post('/:id/publish', async (req, res) => {
       mediaUrls: post.media_urls || post.selected_photos,
     });
 
-    await pool.query(`
+    await postsPool.query(`
       UPDATE generated_posts SET status = 'posted', meta_post_id = $1, posted_at = NOW()
       WHERE id = $2
     `, [result.id, post.id]);
@@ -115,7 +115,7 @@ router.post('/:id/publish', async (req, res) => {
     res.json({ success: true, metaPostId: result.id });
   } catch (err) {
     console.error('Publish error:', err);
-    await pool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
+    await postsPool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
     res.status(500).json({ error: err.message || 'Publishing failed' });
   }
 });
@@ -124,7 +124,7 @@ router.post('/:id/publish', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { caption, hashtags, selectedPhotos } = req.body;
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await postsPool.query(`
       UPDATE generated_posts
       SET caption = COALESCE($1, caption),
           hashtags = COALESCE($2, hashtags),
@@ -142,7 +142,7 @@ router.put('/:id', async (req, res) => {
 // GET /api/posts — list all posts
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM generated_posts ORDER BY created_at DESC LIMIT 50');
+    const { rows } = await postsPool.query('SELECT * FROM generated_posts ORDER BY created_at DESC LIMIT 50');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch posts' });
