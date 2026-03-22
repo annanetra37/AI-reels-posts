@@ -4,6 +4,7 @@ const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
+const { generateVideo, generateImage, pollGeneration } = require('../services/luma-api');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
@@ -25,6 +26,9 @@ router.post('/generate', async (req, res) => {
   };
 
   try {
+    let lumaResultUrl = null;
+    let mediaUrls = [];
+
     // Step 1: Fetch business details
     send('status', { stage: 'fetching', message: '📦 Loading business details...' });
     send('log', { level: 'info', message: `Fetching details for ${businessIds.length} business(es): IDs [${businessIds.join(', ')}]` });
@@ -62,6 +66,50 @@ router.post('/generate', async (req, res) => {
       });
       send('log', { level: 'success', message: `Luma brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
       send('luma', lumaResult);
+
+      // Step 3b: Call LumaLabs API to generate actual media
+      if (process.env.LUMALABS_API_KEY && process.env.LUMALABS_API_KEY !== 'your-lumalabs-key') {
+        send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
+
+        if (postType === 'reel') {
+          // Generate video
+          const referenceImage = selectedPhotos?.[0] || null;
+          send('log', { level: 'info', message: `Calling LumaLabs video API${referenceImage ? ' with reference image' : ''}...` });
+          const gen = await generateVideo(lumaResult.prompt, referenceImage);
+          send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
+
+          const completed = await pollGeneration(gen.id);
+          lumaResultUrl = completed.assets?.video || completed.video?.url || null;
+          if (lumaResultUrl) {
+            mediaUrls = [lumaResultUrl];
+            send('log', { level: 'success', message: `Video generated: ${lumaResultUrl}` });
+          } else {
+            send('log', { level: 'warn', message: 'LumaLabs generation completed but no video URL returned' });
+          }
+        } else if (postType === 'carousel') {
+          // Generate images for each slide
+          const slides = lumaResult.slides || [];
+          send('log', { level: 'info', message: `Generating ${slides.length} carousel slide image(s) via LumaLabs...` });
+
+          for (let i = 0; i < slides.length; i++) {
+            const slide = slides[i];
+            const slidePrompt = slide.prompt || lumaResult.prompt;
+            send('log', { level: 'info', message: `Generating slide ${i + 1}/${slides.length}...` });
+
+            const gen = await generateImage(slidePrompt);
+            const completed = await pollGeneration(gen.id);
+            const imageUrl = completed.assets?.image || null;
+            if (imageUrl) {
+              mediaUrls.push(imageUrl);
+              send('log', { level: 'success', message: `Slide ${i + 1} ready: ${imageUrl}` });
+            }
+          }
+          lumaResultUrl = mediaUrls[0] || null;
+          send('log', { level: 'success', message: `Generated ${mediaUrls.length} carousel image(s)` });
+        }
+      } else {
+        send('log', { level: 'warn', message: 'LUMALABS_API_KEY not set — skipping media generation. Set it in .env to enable.' });
+      }
     } else {
       send('log', { level: 'info', message: `Post type "${postType}" — skipping LumaLabs generation` });
     }
@@ -77,8 +125,8 @@ router.post('/generate', async (req, res) => {
     const { rows: saved } = await postsPool.query(`
       INSERT INTO generated_posts
         (business_ids, post_type, post_style, languages, caption, hashtags,
-         selected_photos, luma_prompt, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
+         selected_photos, luma_prompt, luma_result_url, media_urls, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
       RETURNING *
     `, [
       businessIds,
@@ -89,6 +137,8 @@ router.post('/generate', async (req, res) => {
       captionResult.hashtags,
       selectedPhotos || [],
       lumaResult?.prompt || null,
+      lumaResultUrl,
+      mediaUrls.length > 0 ? mediaUrls : null,
     ]);
 
     send('log', { level: 'success', message: `Post saved with ID: ${saved[0].id}` });
@@ -97,6 +147,7 @@ router.post('/generate', async (req, res) => {
       post: saved[0],
       caption: captionResult,
       luma: lumaResult,
+      mediaUrls,
     });
 
     send('status', { stage: 'done', message: '✅ Post ready for preview!' });

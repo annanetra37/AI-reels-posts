@@ -306,7 +306,7 @@ function handleSSEEvent(event, data) {
       showStatus(data.message);
       addLog('status', data.message);
       // Progress stages
-      const stages = { fetching: 20, caption: 45, luma: 70, saving: 90, done: 100 };
+      const stages = { fetching: 15, caption: 35, luma: 50, luma_generating: 70, saving: 90, done: 100 };
       setProgress(stages[data.stage] || 0);
       if (data.stage === 'done') {
         setTimeout(() => hideStatus(), 2000);
@@ -358,9 +358,16 @@ function renderPreview() {
   // Fill preview
   updatePreviewContent();
 
-  // Media preview
+  // Media preview — prefer Luma-generated media, fall back to selected photos
   const mediaEl = document.getElementById('preview-media');
-  if (state.selectedPhotos.length > 0) {
+  const generatedMedia = state.generatedPost.mediaUrls || [];
+  if (generatedMedia.length > 0) {
+    if (state.postType === 'reel' && generatedMedia[0]) {
+      mediaEl.innerHTML = `<video src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
+    } else {
+      mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
+    }
+  } else if (state.selectedPhotos.length > 0) {
     mediaEl.innerHTML = `<img src="${state.selectedPhotos[0]}" alt="Post media">`;
   }
 
