@@ -72,23 +72,24 @@ router.post('/generate', async (req, res) => {
         send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
 
         if (postType === 'reel') {
-          // Generate video — only use reference image if it's a public URL (LumaLabs can't access local files)
+          // Generate video — require a public reference image to avoid paying for generic videos
           const rawPhoto = selectedPhotos?.[0] || null;
           const referenceImage = rawPhoto && /^https?:\/\//.test(rawPhoto) ? rawPhoto : null;
-          if (rawPhoto && !referenceImage) {
-            send('log', { level: 'warn', message: 'Selected photo is not a public URL — generating video without reference image' });
-          }
-          send('log', { level: 'info', message: `Calling LumaLabs video API${referenceImage ? ' with reference image' : ''}...` });
-          const gen = await generateVideo(lumaResult.prompt, referenceImage);
-          send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
-
-          const completed = await pollGeneration(gen.id);
-          lumaResultUrl = completed.assets?.video || completed.video?.url || null;
-          if (lumaResultUrl) {
-            mediaUrls = [lumaResultUrl];
-            send('log', { level: 'success', message: `Video generated: ${lumaResultUrl}` });
+          if (!referenceImage) {
+            send('log', { level: 'warn', message: 'No public reference image available — skipping LumaLabs video generation to avoid generic output' });
           } else {
-            send('log', { level: 'warn', message: 'LumaLabs generation completed but no video URL returned' });
+            send('log', { level: 'info', message: `Calling LumaLabs video API with reference image...` });
+            const gen = await generateVideo(lumaResult.prompt, referenceImage);
+            send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
+
+            const completed = await pollGeneration(gen.id);
+            lumaResultUrl = completed.assets?.video || completed.video?.url || null;
+            if (lumaResultUrl) {
+              mediaUrls = [lumaResultUrl];
+              send('log', { level: 'success', message: `Video generated: ${lumaResultUrl}` });
+            } else {
+              send('log', { level: 'warn', message: 'LumaLabs generation completed but no video URL returned' });
+            }
           }
         } else if (postType === 'carousel') {
           // Generate images for each slide
