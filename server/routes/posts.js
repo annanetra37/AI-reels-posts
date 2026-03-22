@@ -72,8 +72,12 @@ router.post('/generate', async (req, res) => {
         send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
 
         if (postType === 'reel') {
-          // Generate video
-          const referenceImage = selectedPhotos?.[0] || null;
+          // Generate video — only use reference image if it's a public URL (LumaLabs can't access local files)
+          const rawPhoto = selectedPhotos?.[0] || null;
+          const referenceImage = rawPhoto && /^https?:\/\//.test(rawPhoto) ? rawPhoto : null;
+          if (rawPhoto && !referenceImage) {
+            send('log', { level: 'warn', message: 'Selected photo is not a public URL — generating video without reference image' });
+          }
           send('log', { level: 'info', message: `Calling LumaLabs video API${referenceImage ? ' with reference image' : ''}...` });
           const gen = await generateVideo(lumaResult.prompt, referenceImage);
           send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
