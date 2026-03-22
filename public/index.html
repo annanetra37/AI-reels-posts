@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instagram Marketing System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Instagram Marketing Studio</h1>
+      <p>AI-powered content creation for SME businesses</p>
+    </header>
+
+    <!-- Step Indicators -->
+    <div class="steps" id="steps">
+      <div class="step-indicator active" data-step="1" onclick="goToStep(1)">
+        <span class="step-num">1</span> Select SMEs
+      </div>
+      <div class="step-indicator" data-step="2" onclick="goToStep(2)">
+        <span class="step-num">2</span> Choose Photos
+      </div>
+      <div class="step-indicator" data-step="3" onclick="goToStep(3)">
+        <span class="step-num">3</span> Configure Post
+      </div>
+      <div class="step-indicator" data-step="4" onclick="goToStep(4)">
+        <span class="step-num">4</span> Preview & Post
+      </div>
+    </div>
+
+    <!-- STEP 1: Select SMEs -->
+    <div class="section active" id="step-1">
+      <h2 class="section-title">Select Businesses <span id="sme-count" class="count-badge" style="display:none">0</span></h2>
+      <input type="text" class="search-bar" id="sme-search" placeholder="Search businesses by name, category, or tags...">
+      <div class="card-grid" id="sme-grid">
+        <!-- Populated by JS -->
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-step1-next" onclick="goToStep(2)" disabled>
+          Next: Choose Photos &rarr;
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Choose Photos -->
+    <div class="section" id="step-2">
+      <h2 class="section-title">Select Photos for Your Post <span id="photo-count" class="count-badge" style="display:none">0</span></h2>
+      <div id="photos-container">
+        <!-- Populated by JS: one gallery per selected business -->
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(1)">&larr; Back</button>
+        <button class="btn btn-primary" id="btn-step2-next" onclick="goToStep(3)" disabled>
+          Next: Configure Post &rarr;
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Configure Post -->
+    <div class="section" id="step-3">
+      <h2 class="section-title">Configure Your Post</h2>
+
+      <div class="options-group">
+        <label>Post Type</label>
+        <div class="chip-group" id="post-type-chips">
+          <div class="chip" data-value="image" onclick="selectPostType(this)">Image</div>
+          <div class="chip" data-value="reel" onclick="selectPostType(this)">Reel</div>
+          <div class="chip" data-value="carousel" onclick="selectPostType(this)">Carousel</div>
+          <div class="chip" data-value="story" onclick="selectPostType(this)">Story</div>
+        </div>
+      </div>
+
+      <div class="options-group">
+        <label>Post Style</label>
+        <div class="chip-group" id="post-style-chips">
+          <div class="chip" data-value="did-you-know" onclick="selectPostStyle(this)">Did You Know? 🤔</div>
+          <div class="chip" data-value="brand-of-the-day" onclick="selectPostStyle(this)">Brand of the Day ⭐</div>
+          <div class="chip" data-value="top-x-brands" onclick="selectPostStyle(this)">Top X Brands 🏆</div>
+          <div class="chip" data-value="before-after" onclick="selectPostStyle(this)">Before & After 🔄</div>
+          <div class="chip" data-value="behind-the-scenes" onclick="selectPostStyle(this)">Behind the Scenes 🎬</div>
+          <div class="chip" data-value="hot-take" onclick="selectPostStyle(this)">Hot Take 🔥</div>
+          <div class="chip" data-value="this-or-that" onclick="selectPostStyle(this)">This or That ⚡</div>
+          <div class="chip" data-value="myth-vs-reality" onclick="selectPostStyle(this)">Myth vs. Reality 💡</div>
+          <div class="chip" data-value="unpopular-opinion" onclick="selectPostStyle(this)">Unpopular Opinion 🗣️</div>
+          <div class="chip" data-value="day-in-the-life" onclick="selectPostStyle(this)">Day in the Life 📸</div>
+          <div class="chip" data-value="trend-alert" onclick="selectPostStyle(this)">Trend Alert 🚨</div>
+          <div class="chip" data-value="customer-spotlight" onclick="selectPostStyle(this)">Customer Spotlight 💬</div>
+          <div class="chip" data-value="throwback" onclick="selectPostStyle(this)">Throwback / Origin 🕰️</div>
+          <div class="chip" data-value="local-gem" onclick="selectPostStyle(this)">Hidden Local Gem 💎</div>
+          <div class="chip" data-value="seasonal-pick" onclick="selectPostStyle(this)">Seasonal Pick 🌿</div>
+          <div class="chip" data-value="founder-story" onclick="selectPostStyle(this)">Meet the Founder 👤</div>
+          <div class="chip" data-value="product-hack" onclick="selectPostStyle(this)">Product Hack / Pro Tip 🛠️</div>
+          <div class="chip" data-value="caption-this" onclick="selectPostStyle(this)">Caption This 📝</div>
+          <div class="chip" data-value="aesthetic-mood" onclick="selectPostStyle(this)">Aesthetic Mood Board 🎨</div>
+          <div class="chip" data-value="weekly-roundup" onclick="selectPostStyle(this)">Weekly Roundup 📋</div>
+        </div>
+      </div>
+
+      <div class="options-group">
+        <label>Languages (multi-select)</label>
+        <div class="chip-group" id="language-chips">
+          <div class="chip" data-value="en" onclick="toggleLang(this)">English 🇬🇧</div>
+          <div class="chip" data-value="de" onclick="toggleLang(this)">Deutsch 🇩🇪</div>
+          <div class="chip" data-value="fr" onclick="toggleLang(this)">Français 🇫🇷</div>
+          <div class="chip" data-value="es" onclick="toggleLang(this)">Español 🇪🇸</div>
+          <div class="chip" data-value="it" onclick="toggleLang(this)">Italiano 🇮🇹</div>
+          <div class="chip" data-value="pt" onclick="toggleLang(this)">Português 🇵🇹</div>
+          <div class="chip" data-value="tr" onclick="toggleLang(this)">Türkçe 🇹🇷</div>
+          <div class="chip" data-value="ar" onclick="toggleLang(this)">العربية 🇸🇦</div>
+          <div class="chip" data-value="zh" onclick="toggleLang(this)">中文 🇨🇳</div>
+          <div class="chip" data-value="ja" onclick="toggleLang(this)">日本語 🇯🇵</div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(2)">&larr; Back</button>
+        <button class="btn btn-primary" id="btn-generate" onclick="generatePost()" disabled>
+          ✨ Generate Post
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 4: Preview & Publish -->
+    <div class="section" id="step-4">
+      <h2 class="section-title">Post Preview</h2>
+      <div class="preview-container">
+        <!-- Phone mockup -->
+        <div>
+          <div class="phone-frame" id="phone-preview">
+            <div class="phone-header">
+              <div class="phone-avatar" id="preview-avatar"></div>
+              <span class="phone-username" id="preview-username">your_brand</span>
+            </div>
+            <div class="phone-media" id="preview-media">
+              <span style="color: var(--text-muted)">Media preview</span>
+            </div>
+            <div class="phone-caption" id="preview-caption"></div>
+            <div class="phone-hashtags" id="preview-hashtags"></div>
+          </div>
+
+          <!-- Luma creative brief (shown for reels/carousels) -->
+          <div class="luma-brief" id="luma-brief" style="display:none">
+            <h4>Creative Brief (LumaLabs)</h4>
+            <p id="luma-prompt-text"></p>
+            <p style="margin-top:8px"><strong>Style:</strong> <span id="luma-style"></span></p>
+            <p><strong>Mood:</strong> <span id="luma-mood"></span></p>
+            <div class="color-dots" id="luma-colors"></div>
+          </div>
+        </div>
+
+        <!-- Edit panel -->
+        <div class="edit-panel">
+          <h3>Edit Caption</h3>
+          <div class="language-tabs" id="lang-tabs"></div>
+          <textarea id="edit-caption" rows="8" placeholder="Caption will appear here..."></textarea>
+
+          <h3>Edit Hashtags</h3>
+          <textarea id="edit-hashtags" rows="3" placeholder="Hashtags will appear here..."></textarea>
+
+          <div class="btn-row" style="margin-top: 20px">
+            <button class="btn btn-secondary" onclick="goToStep(3)">&larr; Edit Config</button>
+            <button class="btn btn-primary" onclick="regeneratePost()">🔄 Regenerate</button>
+            <button class="btn btn-success" id="btn-publish" onclick="publishPost()">
+              📱 Post to Instagram
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carousel slides preview -->
+      <div id="carousel-preview-section" style="display:none; margin-top: 24px;">
+        <h3 class="section-title">Carousel Slides</h3>
+        <div class="carousel-preview" id="carousel-slides"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status bar (bottom toast) -->
+  <div class="status-bar" id="status-bar">
+    <div class="status-spinner" id="status-spinner"></div>
+    <span class="status-text" id="status-text">Initializing...</span>
+    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
