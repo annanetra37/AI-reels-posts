@@ -33,6 +33,9 @@ async function lumaGet(path) {
 async function generateVideo(prompt, imageUrl) {
   const body = {
     prompt,
+    model: 'ray-flash-2',
+    resolution: '720p',
+    duration: '5s',
     ...(imageUrl ? { keyframes: { frame0: { type: 'image', url: imageUrl } } } : {}),
   };
   const generation = await lumaFetch('/generations', body);
@@ -43,7 +46,11 @@ async function generateVideo(prompt, imageUrl) {
  * Generate an image using LumaLabs.
  */
 async function generateImage(prompt) {
-  const generation = await lumaFetch('/generations/image', { prompt });
+  const generation = await lumaFetch('/generations/image', {
+    prompt,
+    model: 'photon-1',
+    aspect_ratio: '4:3',
+  });
   return generation;
 }
 
