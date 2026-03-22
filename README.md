@@ -45,6 +45,10 @@ META_ACCESS_TOKEN=your-meta-access-token
 INSTAGRAM_BUSINESS_ACCOUNT_ID=your-ig-account-id
 
 PORT=3000
+
+# Public URL (required for LumaLabs when product photos are base64 in the DB)
+# See "LumaLabs with base64 photos" section below
+PUBLIC_URL=
 ```
 
 ### 3. Create the posts database
@@ -114,7 +118,8 @@ Did You Know, Brand of the Day, Top X Brands, Before & After, Behind the Scenes,
 │       ├── caption-agent.js      # Anthropic Agent 1: caption & hashtag generation
 │       ├── luma-agent.js         # Anthropic Agent 2: LumaLabs prompt generation
 │       ├── luma-api.js           # LumaLabs Dream Machine API client
-│       └── meta-api.js           # Meta Graph API client (Instagram publishing)
+│       ├── meta-api.js           # Meta Graph API client (Instagram publishing)
+│       └── upload.js             # Base64 → public URL converter (saves to public/uploads/)
 ├── public/
 │   ├── index.html                # Single-page app
 │   ├── css/styles.css            # Dark-themed UI styles
@@ -158,6 +163,33 @@ Real-time progress is streamed to the frontend via Server-Sent Events (SSE).
 4. Generate a long-lived access token
 5. Set `META_ACCESS_TOKEN` and `INSTAGRAM_BUSINESS_ACCOUNT_ID` in `.env`
 
+## LumaLabs with base64 photos
+
+If your product photos are stored as base64 data URIs in the SME database (rather than public URLs), LumaLabs cannot access them directly. The app will automatically save the base64 images to `public/uploads/` and serve them via Express — but it needs a publicly accessible URL to give to LumaLabs.
+
+**For local development**, use [ngrok](https://ngrok.com/) to expose your local server:
+
+```bash
+# Install ngrok (https://ngrok.com/download)
+npm install -g ngrok
+
+# Start your app
+npm run dev
+
+# In another terminal, expose port 3000
+ngrok http 3000
+```
+
+ngrok will give you a public URL like `https://abc123.ngrok-free.app`. Add it to your `.env`:
+
+```env
+PUBLIC_URL=https://abc123.ngrok-free.app
+```
+
+**For production**, set `PUBLIC_URL` to your deployed domain (e.g. `https://your-app.railway.app`).
+
+If the photos in the DB are already public `https://` URLs, they are passed directly to LumaLabs and `PUBLIC_URL` is not needed.
+
 ## Troubleshooting
 
 | Issue | Fix |
@@ -166,3 +198,4 @@ Real-time progress is streamed to the frontend via Server-Sent Events (SSE).
 | `ECONNREFUSED` on posts DB | Make sure local PostgreSQL is running and `instagram_posts` database exists |
 | Anthropic errors | Verify `ANTHROPIC_API_KEY` is valid and has credits |
 | Instagram publish fails | Check Meta access token hasn't expired and account permissions are correct |
+| LumaLabs skips video generation | Product photos are base64 and `PUBLIC_URL` is not set. See "LumaLabs with base64 photos" section |
