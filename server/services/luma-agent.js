@@ -8,11 +8,25 @@ async function generateLumaPrompt({ businesses, postType, postStyle, selectedPho
   const bizDescriptions = businesses.map(b => `${b.name}: ${b.description}`).join('; ');
   const photoCount = selectedPhotos?.length || 0;
 
+  // Calculate reel duration: each selected photo gets a ~5s segment (LumaLabs minimum)
+  // With N photos we create N-1 transition segments (photo1→photo2, photo2→photo3, ...)
+  // plus 1 opening segment. So total ≈ N × 5 seconds.
+  const segmentCount = Math.max(photoCount, 1);
+  const segmentDuration = 5; // LumaLabs supports 5s or 9s per generation
+  const totalDuration = segmentCount * segmentDuration;
+
   let typeInstructions = '';
   if (postType === 'reel') {
-    typeInstructions = `Generate a prompt for a 5-10 second video reel.
-The video should be dynamic, eye-catching, and suitable for Instagram Reels.
-Include camera movements, transitions, and visual effects in your prompt.`;
+    typeInstructions = `Generate a prompt for a ${totalDuration}-second Instagram Reel video.
+The user has selected ${photoCount} product photo(s), and each photo will get its own ~${segmentDuration}-second video segment.
+The segments will be stitched together into one continuous reel.
+
+You MUST generate a "segments" array with exactly ${segmentCount} entries — one per photo.
+Each segment should describe the visual transition/animation for that specific product photo
+(e.g. zoom in, rotate, reveal, pan across the product, etc.).
+
+The overall video should feel dynamic, eye-catching, and cohesive — with smooth visual
+continuity between segments. Include camera movements, transitions, and visual effects.`;
   } else if (postType === 'carousel') {
     typeInstructions = `Generate prompts for a carousel of ${Math.max(photoCount + 1, 3)} images.
 The FIRST image must be a title/cover page that says something like "${postStyle === 'top-x-brands' ? `Top ${photoCount} ${bizCategories} Brands` : captionResult?.hook || bizNames}".
@@ -41,18 +55,22 @@ ${typeInstructions}
 
 Respond in this exact JSON format:
 {
-  "prompt": "<the main LumaLabs generation prompt>",
+  "prompt": "<the main/overall LumaLabs generation prompt>",
   "coverText": "<text overlay for the cover/title image if carousel>",
   "style": "<visual style description>",
   "mood": "<mood/atmosphere>",
   "colorPalette": ["<color1>", "<color2>", "<color3>"],
+  "totalDuration": ${totalDuration},
+  "segments": [
+    {"segmentNumber": 1, "description": "<what this segment shows>", "prompt": "<specific LumaLabs prompt for this segment's animation/motion>"}
+  ],
   "slides": [
     {"slideNumber": 1, "description": "<what this slide shows>", "prompt": "<specific prompt for this slide>"}
   ]
 }
 
-For reels, the "slides" array should contain a single entry describing the full video.
-For carousels, include one entry per slide.`;
+For reels, fill the "segments" array with exactly ${segmentCount} entries (one per selected photo) — each with a unique motion/animation prompt. "slides" can be empty.
+For carousels, fill the "slides" array (one per slide). "segments" can be empty.`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
