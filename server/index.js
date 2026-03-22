@@ -23,7 +23,7 @@ app.use('/api/posts', postsRouter);
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 // SPA fallback
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
