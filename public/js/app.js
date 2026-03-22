@@ -15,16 +15,20 @@ const state = {
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', () => {
   fetchBusinesses();
+  addLog('info', 'System initialized. Ready.');
 });
 
 // ===== API =====
 async function fetchBusinesses() {
   try {
+    addLog('info', 'Fetching businesses from database...');
     const res = await fetch('/api/businesses');
     state.businesses = await res.json();
+    addLog('success', `Loaded ${state.businesses.length} business(es)`);
     renderSMEGrid();
   } catch (err) {
     console.error('Failed to load businesses:', err);
+    addLog('error', `Failed to load businesses: ${err.message}`);
     document.getElementById('sme-grid').innerHTML =
       '<p style="color: var(--danger)">Failed to load businesses. Is the database connected?</p>';
   }
@@ -180,6 +184,34 @@ function toggleLang(el) {
   updateGenerateBtn();
 }
 
+function addCustomLang() {
+  const input = document.getElementById('custom-lang-input');
+  const raw = input.value.trim();
+  if (!raw) return;
+
+  // Use the language name as the value (lowercase)
+  const langKey = raw.toLowerCase();
+  if (state.languages.has(langKey)) {
+    input.value = '';
+    return;
+  }
+
+  state.languages.add(langKey);
+
+  // Add a chip to the UI
+  const chipGroup = document.getElementById('language-chips');
+  const chip = document.createElement('div');
+  chip.className = 'chip selected';
+  chip.dataset.value = langKey;
+  chip.textContent = raw;
+  chip.onclick = function () { toggleLang(this); };
+  chipGroup.appendChild(chip);
+
+  input.value = '';
+  updateGenerateBtn();
+  addLog('info', `Added custom language: ${raw}`);
+}
+
 function updateGenerateBtn() {
   const btn = document.getElementById('btn-generate');
   btn.disabled = !(state.postType && state.postStyle && state.languages.size > 0);
@@ -219,6 +251,7 @@ async function generatePost() {
   btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Generating...';
 
   showStatus('Starting generation...');
+  addLog('info', `Starting post generation — type: ${state.postType}, style: ${state.postStyle}, languages: [${[...state.languages].join(', ')}], photos: ${state.selectedPhotos.length}`);
 
   try {
     const body = {
@@ -259,6 +292,7 @@ async function generatePost() {
     }
   } catch (err) {
     console.error('Generation failed:', err);
+    addLog('error', `Generation failed: ${err.message}`);
     showStatus('Generation failed: ' + err.message, true);
   }
 
@@ -270,6 +304,7 @@ function handleSSEEvent(event, data) {
   switch (event) {
     case 'status':
       showStatus(data.message);
+      addLog('status', data.message);
       // Progress stages
       const stages = { fetching: 20, caption: 45, luma: 70, saving: 90, done: 100 };
       setProgress(stages[data.stage] || 0);
@@ -294,8 +329,13 @@ function handleSSEEvent(event, data) {
       goToStep(4);
       break;
 
+    case 'log':
+      addLog(data.level || 'info', data.message);
+      break;
+
     case 'error':
       showStatus('Error: ' + data.message, true);
+      addLog('error', data.message);
       break;
   }
 }
@@ -466,4 +506,35 @@ function hideStatus() {
 
 function setProgress(pct) {
   document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+// ===== Activity Logs =====
+let logCount = 0;
+
+function addLog(level, message) {
+  const container = document.getElementById('logs-content');
+  if (!container) return;
+
+  logCount++;
+  const time = new Date().toLocaleTimeString();
+  const prefix = { info: 'ℹ', success: '✓', error: '✗', warn: '⚠', status: '►' }[level] || '•';
+  const entry = document.createElement('div');
+  entry.className = `log-entry log-${level}`;
+  entry.innerHTML = `<span class="log-time">${time}</span> ${prefix} ${message}`;
+  container.appendChild(entry);
+
+  // Auto-scroll to bottom
+  container.scrollTop = container.scrollHeight;
+
+  // Update badge
+  const badge = document.getElementById('logs-badge');
+  if (badge) {
+    badge.textContent = logCount;
+    badge.style.display = 'inline';
+  }
+}
+
+function toggleLogs() {
+  const panel = document.getElementById('logs-panel');
+  panel.classList.toggle('collapsed');
 }

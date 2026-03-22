@@ -27,13 +27,16 @@ router.post('/generate', async (req, res) => {
   try {
     // Step 1: Fetch business details
     send('status', { stage: 'fetching', message: '📦 Loading business details...' });
+    send('log', { level: 'info', message: `Fetching details for ${businessIds.length} business(es): IDs [${businessIds.join(', ')}]` });
     const { rows: businesses } = await smePool.query(
       'SELECT id, name, category, description, short_tagline, tags, emoji, city, country FROM businesses WHERE id = ANY($1)',
       [businessIds]
     );
+    send('log', { level: 'success', message: `Loaded ${businesses.length} business(es): ${businesses.map(b => b.name).join(', ')}` });
 
     // Step 2: Generate caption & hashtags
     send('status', { stage: 'caption', message: '✍️ Crafting the perfect caption & hashtags...' });
+    send('log', { level: 'info', message: `Calling Anthropic API — style: "${postStyle}", type: "${postType}", languages: [${languages.join(', ')}]` });
     const captionResult = await generateCaption({
       businesses,
       postType,
@@ -41,6 +44,7 @@ router.post('/generate', async (req, res) => {
       languages,
       selectedPhotos,
     });
+    send('log', { level: 'success', message: `Caption generated — ${Object.keys(captionResult.caption || {}).length} language(s), ${(captionResult.hashtags || '').split(' ').filter(Boolean).length} hashtags` });
 
     send('caption', captionResult);
 
@@ -48,6 +52,7 @@ router.post('/generate', async (req, res) => {
     let lumaResult = null;
     if (postType === 'reel' || postType === 'carousel') {
       send('status', { stage: 'luma', message: '🎬 Generating creative brief for visual content...' });
+      send('log', { level: 'info', message: `Generating LumaLabs creative brief for ${postType}...` });
       lumaResult = await generateLumaPrompt({
         businesses,
         postType,
@@ -55,11 +60,20 @@ router.post('/generate', async (req, res) => {
         selectedPhotos,
         captionResult,
       });
+      send('log', { level: 'success', message: `Luma brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
       send('luma', lumaResult);
+    } else {
+      send('log', { level: 'info', message: `Post type "${postType}" — skipping LumaLabs generation` });
     }
 
     // Step 4: Save to DB
     send('status', { stage: 'saving', message: '💾 Saving your post...' });
+    send('log', { level: 'info', message: 'Saving post to database...' });
+    // caption is an object keyed by language — serialize to JSON for DB storage
+    const captionForDB = typeof captionResult.caption === 'object'
+      ? JSON.stringify(captionResult.caption)
+      : captionResult.caption;
+
     const { rows: saved } = await postsPool.query(`
       INSERT INTO generated_posts
         (business_ids, post_type, post_style, languages, caption, hashtags,
@@ -71,11 +85,13 @@ router.post('/generate', async (req, res) => {
       postType,
       postStyle,
       languages,
-      captionResult.caption,
+      captionForDB,
       captionResult.hashtags,
       selectedPhotos || [],
       lumaResult?.prompt || null,
     ]);
+
+    send('log', { level: 'success', message: `Post saved with ID: ${saved[0].id}` });
 
     send('complete', {
       post: saved[0],
@@ -84,9 +100,11 @@ router.post('/generate', async (req, res) => {
     });
 
     send('status', { stage: 'done', message: '✅ Post ready for preview!' });
+    send('log', { level: 'success', message: 'Generation complete — post ready for preview!' });
     res.end();
   } catch (err) {
     console.error('Generation error:', err);
+    send('log', { level: 'error', message: `ERROR: ${err.message}` });
     send('error', { message: err.message || 'Generation failed' });
     res.end();
   }
