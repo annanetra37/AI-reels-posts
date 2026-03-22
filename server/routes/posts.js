@@ -5,6 +5,7 @@ const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
 const { generateVideo, generateImage, pollGeneration } = require('../services/luma-api');
+const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
@@ -74,9 +75,9 @@ router.post('/generate', async (req, res) => {
         if (postType === 'reel') {
           // Generate video — require a public reference image to avoid paying for generic videos
           const rawPhoto = selectedPhotos?.[0] || null;
-          const referenceImage = rawPhoto && /^https?:\/\//.test(rawPhoto) ? rawPhoto : null;
+          const referenceImage = toPublicUrl(rawPhoto);
           if (!referenceImage) {
-            send('log', { level: 'warn', message: 'No public reference image available — skipping LumaLabs video generation to avoid generic output' });
+            send('log', { level: 'warn', message: 'No public reference image available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
           } else {
             send('log', { level: 'info', message: `Calling LumaLabs video API with reference image...` });
             const gen = await generateVideo(lumaResult.prompt, referenceImage);
