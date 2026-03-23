@@ -4,7 +4,7 @@ const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
-const { generateVideo, generateImage, pollGeneration } = require('../services/luma-api');
+const { generateVideo, generateImage, addAudio, pollGeneration } = require('../services/luma-api');
 const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
@@ -112,6 +112,7 @@ router.post('/generate', async (req, res) => {
             const totalEstimate = pairs.reduce((s, p) => s + parseInt(p.duration), 0);
             send('log', { level: 'info', message: `Generating ${pairs.length} video segment(s) from ${publicPhotos.length} photos (~${totalEstimate}s total, $${(pairs.length * 0.85).toFixed(2)} est. cost)...` });
 
+            const generationIds = [];
             for (let i = 0; i < pairs.length; i++) {
               const pair = pairs[i];
               const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
@@ -121,6 +122,7 @@ router.post('/generate', async (req, res) => {
               send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
 
               const completed = await pollGeneration(gen.id);
+              generationIds.push(gen.id);
               const videoUrl = completed.assets?.video || completed.video?.url || null;
               if (videoUrl) {
                 mediaUrls.push(videoUrl);
@@ -130,8 +132,33 @@ router.post('/generate', async (req, res) => {
               }
             }
 
+            // Add audio/music if requested (free — no extra credits)
+            if (music === 'auto' && generationIds.length > 0) {
+              const audioPrompt = lumaResult.musicSuggestion || 'upbeat modern background music matching the brand energy';
+              send('status', { stage: 'luma_audio', message: '🎵 Adding AI-generated music...' });
+              send('log', { level: 'info', message: `Adding music to ${generationIds.length} segment(s): "${audioPrompt.slice(0, 80)}..."` });
+
+              for (let i = 0; i < generationIds.length; i++) {
+                try {
+                  const audioGen = await addAudio(generationIds[i], audioPrompt);
+                  const audioId = audioGen.id || generationIds[i];
+                  send('log', { level: 'info', message: `Audio generation started for segment ${i + 1} (ID: ${audioId}). Polling...` });
+                  const audioCompleted = await pollGeneration(audioId);
+                  const audioVideoUrl = audioCompleted.assets?.video || null;
+                  if (audioVideoUrl) {
+                    mediaUrls[i] = audioVideoUrl; // replace silent with audio version
+                    send('log', { level: 'success', message: `Segment ${i + 1} with music ready: ${audioVideoUrl}` });
+                  } else {
+                    send('log', { level: 'warn', message: `Segment ${i + 1}: audio done but no new URL — keeping silent version` });
+                  }
+                } catch (audioErr) {
+                  send('log', { level: 'warn', message: `Audio failed for segment ${i + 1}: ${audioErr.message}. Keeping silent version.` });
+                }
+              }
+            }
+
             lumaResultUrl = mediaUrls[0] || null;
-            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${totalEstimate}s reel` });
+            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${totalEstimate}s reel${music === 'auto' ? ' with music' : ''}` });
           }
         } else if (postType === 'carousel') {
           // Generate images for each slide
