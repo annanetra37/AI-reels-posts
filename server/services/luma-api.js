@@ -80,9 +80,11 @@ async function addAudio(generationId, prompt) {
 
 /**
  * Poll for generation completion.
- * No timeout — keeps polling until LumaLabs returns completed or failed.
+ * Generous 10-minute timeout — if LumaLabs is stuck beyond that, it's an outage.
+ * Normal generation takes 2-5 minutes.
  */
 async function pollGeneration(generationId) {
+  const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
   const start = Date.now();
   while (true) {
     const gen = await lumaGet(`/generations/${generationId}`);
@@ -91,6 +93,9 @@ async function pollGeneration(generationId) {
       throw new Error(`LumaLabs generation failed: ${gen.failure_reason || 'unknown reason'}`);
     }
     const elapsed = Math.round((Date.now() - start) / 1000);
+    if (Date.now() - start > MAX_WAIT_MS) {
+      throw new Error(`LumaLabs generation stuck in "${gen.state}" for ${elapsed}s — likely a LumaLabs outage. Check status.lumalabs.ai and retry later.`);
+    }
     console.log(`[INFO] Polling generation ${generationId} — state: ${gen.state}, elapsed: ${elapsed}s`);
     await new Promise(r => setTimeout(r, 5000));
   }
