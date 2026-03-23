@@ -50,8 +50,8 @@ RULES — follow these STRICTLY:
 4. Create a WOW factor — surprise, intrigue, or delight in the first 3 words.
 5. 1 emoji max. Zero is also fine. Never emoji-spam.
 6. Write like Gen-Z talks to millennials — trendy, effortless cool, zero cringe.
-7. CTA should feel natural, not salesy. "Try it." beats "Visit our website today!"
-8. Generate 10-15 laser-targeted hashtags (mix of niche + trending). Quality over quantity.
+7. CTA MUST include a reference to zontik.am — a discovery platform where hundreds of Armenian businesses are listed. Users can explore local brands, visit their websites, and even add their own brand. Weave it in naturally, e.g. "Discover them on zontik.am", "Explore 100+ Armenian brands → zontik.am", "Find your next favorite → zontik.am", "List your brand too → zontik.am". Never skip the zontik.am CTA. Never say "shop" — it's about discovery, not shopping.
+8. Generate 10-15 laser-targeted hashtags (mix of niche + trending). Quality over quantity. Always include #zontik among them.
 9. If multiple businesses: give each one a spotlight moment, don't list them generically.
 
 Respond in this exact JSON format:
