@@ -33,8 +33,11 @@
 
     <!-- STEP 1: Select SMEs -->
     <div class="section active" id="step-1">
-      <h2 class="section-title">Select Businesses <span id="sme-count" class="count-badge" style="display:none">0</span></h2>
-      <input type="text" class="search-bar" id="sme-search" placeholder="Search businesses by name, category, or tags...">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <h2 class="section-title" style="margin-bottom:0">Select Businesses <span id="sme-count" class="count-badge" style="display:none">0</span></h2>
+        <button class="btn btn-secondary" style="padding:8px 14px;font-size:0.85rem" onclick="openAddSME()">+ Add New</button>
+      </div>
+      <input type="text" class="search-bar" id="sme-search" placeholder="Search businesses by name, category, or tags..." style="margin-bottom:16px">
       <div class="card-grid" id="sme-grid">
         <!-- Populated by JS -->
       </div>
@@ -126,6 +129,7 @@
           <div class="chip" data-value="ar" onclick="toggleLang(this)">العربية 🇸🇦</div>
           <div class="chip" data-value="zh" onclick="toggleLang(this)">中文 🇨🇳</div>
           <div class="chip" data-value="ja" onclick="toggleLang(this)">日本語 🇯🇵</div>
+          <div class="chip" data-value="hy" onclick="toggleLang(this)">Հայերեն 🇦🇲</div>
         </div>
         <div class="custom-lang-row" style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
           <input type="text" id="custom-lang-input" class="search-bar" style="margin-bottom:0; flex:1; max-width:280px;"
@@ -228,6 +232,152 @@
     <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
   </div>
 
+  <!-- Add SME Modal -->
+  <div class="modal-overlay" id="add-sme-modal" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add New Business</h2>
+        <button class="modal-close" onclick="closeAddSME()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Business Name *</label>
+            <input type="text" id="sme-name" placeholder="e.g. Artisan Coffee Co.">
+          </div>
+
+          <div class="form-group">
+            <label>Category *</label>
+            <select id="sme-category">
+              <option value="">Select category...</option>
+              <option value="Food & Hospitality">Food & Hospitality</option>
+              <option value="Tech & Services">Tech & Services</option>
+              <option value="Crafts & Local">Crafts & Local</option>
+              <option value="Wellness & Care">Wellness & Care</option>
+              <option value="Fashion & Jewelry">Fashion & Jewelry</option>
+              <option value="Education">Education</option>
+              <option value="Travel">Travel</option>
+              <option value="Experiences">Experiences</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Icon</label>
+            <select id="sme-emoji">
+              <option value="">Select icon...</option>
+              <option value="📧">📧</option><option value="🔍">🔍</option>
+              <option value="☕">☕</option><option value="💻">💻</option>
+              <option value="🖥️">🖥️</option><option value="📱">📱</option>
+              <option value="🐦">🐦</option><option value="🔧">🔧</option>
+              <option value="🎨">🎨</option><option value="🐷">🐷</option>
+              <option value="🔑">🔑</option><option value="❤️">❤️</option>
+              <option value="🐱">🐱</option><option value="🧴">🧴</option>
+              <option value="👜">👜</option><option value="💎">💎</option>
+              <option value="👗">👗</option><option value="📖">📖</option>
+              <option value="🎓">🎓</option><option value="🌍">🌍</option>
+              <option value="✈️">✈️</option><option value="⭐">⭐</option>
+            </select>
+          </div>
+
+          <div class="form-group full">
+            <label>Description</label>
+            <textarea id="sme-description" rows="2" placeholder="What does this business do?"></textarea>
+          </div>
+
+          <div class="form-group full">
+            <label>Short Tagline</label>
+            <input type="text" id="sme-tagline" placeholder="e.g. Handcrafted with love">
+          </div>
+
+          <div class="form-group">
+            <label>Country *</label>
+            <select id="sme-country" onchange="onCountryChange()">
+              <option value="">Select country...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>City</label>
+            <select id="sme-city">
+              <option value="">Select country first...</option>
+            </select>
+          </div>
+
+          <div class="form-group full">
+            <label>Address</label>
+            <input type="text" id="sme-address" placeholder="e.g. Mariahilfer Straße 45, 1060">
+          </div>
+
+          <div class="form-group">
+            <label>Price Range</label>
+            <div class="chip-group" id="price-range-chips">
+              <div class="chip" data-value="€" onclick="selectPriceRange(this)">€</div>
+              <div class="chip" data-value="€€" onclick="selectPriceRange(this)">€€</div>
+              <div class="chip" data-value="€€€" onclick="selectPriceRange(this)">€€€</div>
+              <div class="chip" data-value="€€€€" onclick="selectPriceRange(this)">€€€€</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Tags</label>
+            <input type="text" id="sme-tags" placeholder="e.g. organic, artisan, handmade">
+          </div>
+
+          <div class="form-group">
+            <label>Website</label>
+            <input type="text" id="sme-website" placeholder="https://yourbusiness.com">
+          </div>
+
+          <div class="form-group">
+            <label>Contact Email</label>
+            <input type="email" id="sme-email" placeholder="hello@yourbusiness.com">
+          </div>
+
+          <div class="form-group">
+            <label>Contact Phone</label>
+            <input type="text" id="sme-phone" placeholder="+374 ...">
+          </div>
+
+          <div class="form-group">
+            <label>Owner Name</label>
+            <input type="text" id="sme-owner" placeholder="Full name">
+          </div>
+
+          <div class="form-group">
+            <label>Year Founded</label>
+            <input type="number" id="sme-year" placeholder="2020" min="1900" max="2030">
+          </div>
+
+          <div class="form-group">
+            <label>Instagram</label>
+            <input type="text" id="sme-instagram" placeholder="@yourhandle">
+          </div>
+
+          <div class="form-group">
+            <label>Facebook</label>
+            <input type="text" id="sme-facebook" placeholder="facebook.com/page">
+          </div>
+
+          <div class="form-group">
+            <label>LinkedIn</label>
+            <input type="text" id="sme-linkedin" placeholder="linkedin.com/company/...">
+          </div>
+
+          <div class="form-group">
+            <label>TikTok</label>
+            <input type="text" id="sme-tiktok" placeholder="@yourhandle">
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-top: 20px; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="closeAddSME()">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-sme" onclick="saveNewSME()">Save Business</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/geo-data.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
