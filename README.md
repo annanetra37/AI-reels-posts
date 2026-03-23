@@ -56,13 +56,16 @@ PUBLIC_URL=
 Create a local PostgreSQL database for storing generated posts:
 
 ```bash
-# Create the database
 createdb instagram_posts
+
+        # or with explicit credentials:
+        createdb -U postgres -h localhost instagram_posts
 
 # Run the schema migration
 psql instagram_posts < server/db/posts-schema.sql
+        #OR 
+        psql -U postgres -h 127.0.0.1 -d instagram_posts -f server/db/posts-schema.sql
 ```
-
 Or if you prefer using `psql` directly:
 
 ```sql
