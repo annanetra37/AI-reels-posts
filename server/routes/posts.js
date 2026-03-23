@@ -82,13 +82,13 @@ router.post('/generate', async (req, res) => {
         send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
 
         if (postType === 'reel' || postStyle === 'animation') {
-          // Convert all selected photos to public URLs
-          const publicPhotos = (selectedPhotos || [])
-            .map(p => toPublicUrl(p))
-            .filter(Boolean);
+          // Convert all selected photos to public URLs (via Cloudinary)
+          const publicPhotos = (await Promise.all(
+            (selectedPhotos || []).map(p => toPublicUrl(p))
+          )).filter(Boolean);
 
           if (publicPhotos.length === 0) {
-            send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
+            send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Ensure Cloudinary is configured in .env.' });
           } else {
             const pairs = [];
             if (postStyle === 'animation') {

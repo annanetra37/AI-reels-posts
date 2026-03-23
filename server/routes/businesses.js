@@ -1,24 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
 const { smePool } = require('../db/pool');
+const { uploadBuffer } = require('../services/cloudinary');
 
-// Configure multer to save to public/uploads/
-const UPLOADS_DIR = path.join(__dirname, '..', '..', 'public', 'uploads');
-const fs = require('fs');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: UPLOADS_DIR,
-  filename: (req, file, cb) => {
-    const hash = crypto.randomBytes(8).toString('hex');
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${hash}${ext}`);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB max
+// Use memory storage — files go straight to Cloudinary, not local disk
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB max
 
 // GET /api/businesses — list all approved businesses
 router.get('/', async (req, res) => {
@@ -108,14 +95,9 @@ router.post('/:id/photos', upload.single('photo'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const bizId = req.params.id;
-    const filename = req.file.filename;
 
-    // Build public URL
-    const publicUrl = process.env.PUBLIC_URL;
-    if (!publicUrl) {
-      return res.status(400).json({ error: 'PUBLIC_URL not set in .env — needed to create a public URL for the uploaded photo' });
-    }
-    const photoUrl = `${publicUrl.replace(/\/$/, '')}/uploads/${filename}`;
+    // Upload to Cloudinary
+    const { url: photoUrl } = await uploadBuffer(req.file.buffer, 'sme-photos');
 
     // Get next sort_order
     const { rows: maxRow } = await smePool.query(
@@ -130,7 +112,7 @@ router.post('/:id/photos', upload.single('photo'), async (req, res) => {
       [bizId, photoUrl, sortOrder]
     );
 
-    console.log(`[UPLOAD] Photo uploaded for business ${bizId}: ${photoUrl}`);
+    console.log(`[UPLOAD] Photo uploaded to Cloudinary for business ${bizId}: ${photoUrl}`);
     res.json({ success: true, photo: rows[0] });
   } catch (err) {
     console.error('[UPLOAD] Error:', err);
