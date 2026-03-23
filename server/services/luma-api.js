@@ -84,7 +84,7 @@ async function addAudio(generationId, prompt) {
  * Normal generation takes 2-5 minutes.
  */
 async function pollGeneration(generationId) {
-  const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
+  const MAX_WAIT_MS = 15 * 60 * 1000; // 15 minutes
   const start = Date.now();
   while (true) {
     const gen = await lumaGet(`/generations/${generationId}`);
