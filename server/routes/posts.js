@@ -9,7 +9,7 @@ const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
-  const { businessIds, postType, postStyle, languages, selectedPhotos } = req.body;
+  const { businessIds, postType, postStyle, languages, selectedPhotos, customDescription } = req.body;
 
   if (!businessIds?.length || !postType || !postStyle || !languages?.length) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -48,6 +48,7 @@ router.post('/generate', async (req, res) => {
       postStyle,
       languages,
       selectedPhotos,
+      customDescription,
     });
     send('log', { level: 'success', message: `Caption generated — ${Object.keys(captionResult.caption || {}).length} language(s), ${(captionResult.hashtags || '').split(' ').filter(Boolean).length} hashtags` });
 
@@ -64,6 +65,7 @@ router.post('/generate', async (req, res) => {
         postStyle,
         selectedPhotos,
         captionResult,
+        customDescription,
       });
       send('log', { level: 'success', message: `Luma brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
       send('luma', lumaResult);
@@ -81,17 +83,38 @@ router.post('/generate', async (req, res) => {
           if (publicPhotos.length === 0) {
             send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
           } else {
+            // Pair photos to minimize API calls:
+            // - 1 photo:  1 call (frame0 only, 5s)
+            // - 2 photos: 1 call (frame0→frame1, 9s ≈ 4.5s/photo)
+            // - 3 photos: 2 calls (photo1→photo2 5s, photo2→photo3 5s)
+            // - 4 photos: 2 calls (photo1→photo2 9s, photo3→photo4 9s)
+            const pairs = [];
+            if (publicPhotos.length === 1) {
+              pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
+            } else if (publicPhotos.length === 2) {
+              pairs.push({ start: publicPhotos[0], end: publicPhotos[1], duration: '9s' });
+            } else {
+              // Pair consecutive photos: (0,1), (2,3), ...
+              // If odd number, last one gets its own 5s segment
+              for (let i = 0; i < publicPhotos.length; i += 2) {
+                if (i + 1 < publicPhotos.length) {
+                  pairs.push({ start: publicPhotos[i], end: publicPhotos[i + 1], duration: '9s' });
+                } else {
+                  pairs.push({ start: publicPhotos[i], end: null, duration: '5s' });
+                }
+              }
+            }
+
             const segments = lumaResult.segments || [{ prompt: lumaResult.prompt }];
-            send('log', { level: 'info', message: `Generating ${publicPhotos.length} video segment(s) — one per selected photo...` });
+            const totalEstimate = pairs.reduce((s, p) => s + parseInt(p.duration), 0);
+            send('log', { level: 'info', message: `Generating ${pairs.length} video segment(s) from ${publicPhotos.length} photos (~${totalEstimate}s total, $${(pairs.length * 0.85).toFixed(2)} est. cost)...` });
 
-            for (let i = 0; i < publicPhotos.length; i++) {
+            for (let i = 0; i < pairs.length; i++) {
+              const pair = pairs[i];
               const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
-              const startImage = publicPhotos[i];
-              // Use next photo as end keyframe for smooth transitions (if available)
-              const endImage = publicPhotos[i + 1] || null;
 
-              send('log', { level: 'info', message: `Segment ${i + 1}/${publicPhotos.length}: generating video (start: photo ${i + 1}${endImage ? `, end: photo ${i + 2}` : ''})...` });
-              const gen = await generateVideo(segmentPrompt, startImage, endImage, '5s');
+              send('log', { level: 'info', message: `Segment ${i + 1}/${pairs.length}: ${pair.duration} video${pair.end ? ' (transition between 2 photos)' : ' (single photo)'}...` });
+              const gen = await generateVideo(segmentPrompt, pair.start, pair.end, pair.duration);
               send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
 
               const completed = await pollGeneration(gen.id);
@@ -105,7 +128,7 @@ router.post('/generate', async (req, res) => {
             }
 
             lumaResultUrl = mediaUrls[0] || null;
-            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${publicPhotos.length * 5}s reel` });
+            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${totalEstimate}s reel` });
           }
         } else if (postType === 'carousel') {
           // Generate images for each slide

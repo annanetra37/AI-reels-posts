@@ -2,37 +2,52 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic();
 
-async function generateLumaPrompt({ businesses, postType, postStyle, selectedPhotos, captionResult }) {
+async function generateLumaPrompt({ businesses, postType, postStyle, selectedPhotos, captionResult, customDescription }) {
   const bizNames = businesses.map(b => b.name).join(', ');
   const bizCategories = [...new Set(businesses.map(b => b.category))].join(', ');
   const bizDescriptions = businesses.map(b => `${b.name}: ${b.description}`).join('; ');
   const photoCount = selectedPhotos?.length || 0;
 
-  // Calculate reel duration: each selected photo gets a ~5s segment (LumaLabs minimum)
-  // With N photos we create N-1 transition segments (photo1→photo2, photo2→photo3, ...)
-  // plus 1 opening segment. So total ≈ N × 5 seconds.
-  const segmentCount = Math.max(photoCount, 1);
-  const segmentDuration = 5; // LumaLabs supports 5s or 9s per generation
-  const totalDuration = segmentCount * segmentDuration;
+  // Pair photos to minimize LumaLabs API calls:
+  // 1 photo → 1 segment (5s), 2 photos → 1 segment (9s), 3 → 2 segments, 4 → 2 segments, etc.
+  let apiSegmentCount;
+  if (photoCount <= 1) apiSegmentCount = 1;
+  else if (photoCount === 2) apiSegmentCount = 1;
+  else apiSegmentCount = Math.ceil(photoCount / 2);
+
+  const totalDuration = photoCount <= 1 ? 5
+    : photoCount === 2 ? 9
+    : apiSegmentCount * 9 - (photoCount % 2 === 1 ? 4 : 0); // pairs get 9s, odd last gets 5s
 
   let typeInstructions = '';
   if (postType === 'reel') {
-    typeInstructions = `Generate a prompt for a ${totalDuration}-second Instagram Reel video.
-The user has selected ${photoCount} product photo(s), and each photo will get its own ~${segmentDuration}-second video segment.
-The segments will be stitched together into one continuous reel.
+    typeInstructions = `Generate a prompt for a ~${totalDuration}-second Instagram Reel video.
+The user has selected ${photoCount} product photo(s). To save cost, photos are paired into ${apiSegmentCount} video segment(s):
+${photoCount === 1 ? '- 1 segment: single photo animation (5s)' :
+  photoCount === 2 ? '- 1 segment: smooth transition from photo 1 to photo 2 (9s, ~4.5s per photo)' :
+  Array.from({ length: apiSegmentCount }, (_, i) => {
+    const p1 = i * 2 + 1;
+    const p2 = i * 2 + 2;
+    return p2 <= photoCount
+      ? `- Segment ${i + 1}: transition from photo ${p1} to photo ${p2} (9s)`
+      : `- Segment ${i + 1}: photo ${p1} animation (5s)`;
+  }).join('\n')}
 
-You MUST generate a "segments" array with exactly ${segmentCount} entries — one per photo.
-Each segment should describe the visual transition/animation for that specific product photo
-(e.g. zoom in, rotate, reveal, pan across the product, etc.).
+You MUST generate a "segments" array with exactly ${apiSegmentCount} entries — one per API call.
+Each segment prompt should describe the visual animation/transition for that pair of photos
+(e.g. zoom, rotate, reveal, pan, morph between products, etc.).
 
-The overall video should feel dynamic, eye-catching, and cohesive — with smooth visual
-continuity between segments. Include camera movements, transitions, and visual effects.`;
+The overall video should feel dynamic, eye-catching, and cohesive.`;
   } else if (postType === 'carousel') {
     typeInstructions = `Generate prompts for a carousel of ${Math.max(photoCount + 1, 3)} images.
 The FIRST image must be a title/cover page that says something like "${postStyle === 'top-x-brands' ? `Top ${photoCount} ${bizCategories} Brands` : captionResult?.hook || bizNames}".
 Each subsequent image should showcase the selected products/brands harmoniously.
 All images must share a consistent visual style, color palette, and aesthetic.`;
   }
+
+  const customBlock = customDescription
+    ? `\n**Custom Creative Direction from User:**\n${customDescription}\n(Incorporate these instructions into your creative brief and prompts.)\n`
+    : '';
 
   const prompt = `You are an expert visual content director specializing in social media content creation.
 Generate a detailed, high-quality prompt for LumaLabs AI to create ${postType} content.
@@ -43,7 +58,7 @@ Generate a detailed, high-quality prompt for LumaLabs AI to create ${postType} c
 - Descriptions: ${bizDescriptions}
 - Post style: ${postStyle}
 - Number of product photos to feature: ${photoCount}
-
+${customBlock}
 **Requirements:**
 ${typeInstructions}
 
@@ -69,7 +84,7 @@ Respond in this exact JSON format:
   ]
 }
 
-For reels, fill the "segments" array with exactly ${segmentCount} entries (one per selected photo) — each with a unique motion/animation prompt. "slides" can be empty.
+For reels, fill the "segments" array with exactly ${apiSegmentCount} entries (one per paired segment) — each with a unique motion/animation prompt. "slides" can be empty.
 For carousels, fill the "slides" array (one per slide). "segments" can be empty.`;
 
   const response = await client.messages.create({

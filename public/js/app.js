@@ -254,12 +254,14 @@ async function generatePost() {
   addLog('info', `Starting post generation — type: ${state.postType}, style: ${state.postStyle}, languages: [${[...state.languages].join(', ')}], photos: ${state.selectedPhotos.length}`);
 
   try {
+    const customDesc = document.getElementById('custom-description')?.value?.trim() || '';
     const body = {
       businessIds: [...state.selectedSMEs],
       postType: state.postType,
       postStyle: state.postStyle,
       languages: [...state.languages],
       selectedPhotos: state.selectedPhotos,
+      ...(customDesc ? { customDescription: customDesc } : {}),
     };
 
     const response = await fetch('/api/posts/generate', {

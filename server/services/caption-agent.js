@@ -25,7 +25,7 @@ const POST_STYLE_DETAILS = {
   'weekly-roundup': 'A "Weekly Roundup" digest post featuring multiple brands/products',
 };
 
-async function generateCaption({ businesses, postType, postStyle, languages, selectedPhotos }) {
+async function generateCaption({ businesses, postType, postStyle, languages, selectedPhotos, customDescription }) {
   const bizDescriptions = businesses.map(b =>
     `- ${b.emoji || ''} ${b.name}: ${b.description} (Category: ${b.category}, City: ${b.city}, Tagline: "${b.short_tagline || ''}")`
   ).join('\n');
@@ -43,7 +43,7 @@ ${bizDescriptions}
 **Post Type:** ${postType}
 **Number of selected photos:** ${photoCount}
 **Target languages:** ${languages.join(', ')}
-
+${customDescription ? `\n**Custom Direction from User:**\n${customDescription}\n(Incorporate these instructions into the caption tone, content, and style.)\n` : ''}
 INSTRUCTIONS:
 1. Write a SHORT, punchy caption for each requested language — MAX 2-3 sentences (under 150 characters ideally).
 2. Instagram users don't read long captions. Keep it snappy and scroll-stopping.
