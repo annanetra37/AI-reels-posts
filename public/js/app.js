@@ -208,6 +208,119 @@ function updatePhotoCount() {
   btn.disabled = count === 0;
 }
 
+// ===== Add SME Modal =====
+let selectedPriceRange = '';
+
+function openAddSME() {
+  document.getElementById('add-sme-modal').style.display = 'flex';
+  // Populate country dropdown from geo-data.js
+  const countrySelect = document.getElementById('sme-country');
+  if (countrySelect.options.length <= 1 && window.COUNTRIES) {
+    for (const c of window.COUNTRIES) {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      countrySelect.appendChild(opt);
+    }
+  }
+}
+
+function closeAddSME() {
+  document.getElementById('add-sme-modal').style.display = 'none';
+}
+
+function onCountryChange() {
+  const country = document.getElementById('sme-country').value;
+  const citySelect = document.getElementById('sme-city');
+  citySelect.innerHTML = '<option value="">Select city...</option>';
+
+  const cities = window.CITIES_BY_COUNTRY?.[country] || [];
+  for (const c of cities) {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    citySelect.appendChild(opt);
+  }
+}
+
+function selectPriceRange(el) {
+  document.querySelectorAll('#price-range-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedPriceRange = el.dataset.value;
+}
+
+async function saveNewSME() {
+  const name = document.getElementById('sme-name').value.trim();
+  const category = document.getElementById('sme-category').value;
+  const country = document.getElementById('sme-country').value;
+
+  if (!name || !category || !country) {
+    alert('Name, category, and country are required.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-sme');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const tagsRaw = document.getElementById('sme-tags').value.trim();
+  const tagsArray = tagsRaw ? `{${tagsRaw.split(',').map(t => t.trim()).filter(Boolean).join(',')}}` : '{}';
+
+  const body = {
+    name,
+    category,
+    description: document.getElementById('sme-description').value.trim(),
+    short_tagline: document.getElementById('sme-tagline').value.trim(),
+    country,
+    city: document.getElementById('sme-city').value,
+    address: document.getElementById('sme-address').value.trim(),
+    emoji: document.getElementById('sme-emoji').value,
+    price_range: selectedPriceRange,
+    tags: tagsArray,
+    website: document.getElementById('sme-website').value.trim(),
+    contact_email: document.getElementById('sme-email').value.trim(),
+    contact_phone: document.getElementById('sme-phone').value.trim(),
+    owner_name: document.getElementById('sme-owner').value.trim(),
+    year_founded: document.getElementById('sme-year').value ? parseInt(document.getElementById('sme-year').value) : null,
+    instagram: document.getElementById('sme-instagram').value.trim(),
+    facebook: document.getElementById('sme-facebook').value.trim(),
+    linkedin: document.getElementById('sme-linkedin').value.trim(),
+    tiktok: document.getElementById('sme-tiktok').value.trim(),
+  };
+
+  try {
+    const res = await fetch('/api/businesses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to create business');
+
+    addLog('success', `New business created: ${result.business.name} (ID: ${result.business.id})`);
+
+    // Refresh businesses list and close modal
+    await fetchBusinesses();
+    closeAddSME();
+
+    // Reset form
+    document.querySelectorAll('#add-sme-modal input, #add-sme-modal textarea, #add-sme-modal select').forEach(el => {
+      if (el.tagName === 'SELECT') el.selectedIndex = 0;
+      else el.value = '';
+    });
+    document.querySelectorAll('#price-range-chips .chip').forEach(c => c.classList.remove('selected'));
+    selectedPriceRange = '';
+  } catch (err) {
+    console.error('Failed to create business:', err);
+    addLog('error', `Failed to create business: ${err.message}`);
+    alert('Failed to create business: ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Save Business';
+}
+
 // ===== Post Config =====
 function selectPostType(el) {
   document.querySelectorAll('#post-type-chips .chip').forEach(c => c.classList.remove('selected'));

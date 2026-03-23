@@ -64,6 +64,44 @@ router.get('/:id/photos', async (req, res) => {
   }
 });
 
+// POST /api/businesses — create a new business
+router.post('/', async (req, res) => {
+  try {
+    const b = req.body;
+    if (!b.name || !b.category || !b.country) {
+      return res.status(400).json({ error: 'Name, category, and country are required' });
+    }
+
+    const { rows } = await smePool.query(`
+      INSERT INTO businesses (
+        name, category, description, website, city, country,
+        contact_email, contact_phone, price_range, tags, emoji,
+        featured, year_founded, owner_name, short_tagline,
+        instagram, facebook, linkedin, tiktok,
+        approved, website_domain, logo, product_photo, pin_order, address
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11,
+        $12, $13, $14, $15,
+        $16, $17, $18, $19,
+        true, $20, $21, $22, 0, $23
+      ) RETURNING *
+    `, [
+      b.name, b.category, b.description || '', b.website || '', b.city || '', b.country,
+      b.contact_email || '', b.contact_phone || '', b.price_range || '', b.tags || '{}', b.emoji || '',
+      b.featured || false, b.year_founded || null, b.owner_name || '', b.short_tagline || '',
+      b.instagram || '', b.facebook || '', b.linkedin || '', b.tiktok || '',
+      b.website_domain || '', b.logo || '', b.product_photo || '', b.address || '',
+    ]);
+
+    console.log(`[NEW SME] Created business: ${rows[0].name} (ID: ${rows[0].id})`);
+    res.json({ success: true, business: rows[0] });
+  } catch (err) {
+    console.error('[NEW SME] Error:', err);
+    res.status(500).json({ error: 'Failed to create business' });
+  }
+});
+
 // POST /api/businesses/:id/photos — upload a photo for a business
 router.post('/:id/photos', upload.single('photo'), async (req, res) => {
   try {
