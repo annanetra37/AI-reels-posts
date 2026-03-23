@@ -132,6 +132,15 @@ async function renderPhotoGallery() {
       html += '<p style="color: var(--text-muted); padding: 20px;">No photos available for this business.</p>';
     }
 
+    // Upload button
+    html += `
+      <div class="photo-item photo-upload" onclick="document.getElementById('upload-${bizId}').click()" style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;border-style:dashed;cursor:pointer">
+        <span style="font-size:1.5rem;color:var(--text-muted)">+</span>
+        <span style="font-size:0.75rem;color:var(--text-muted)">Upload Photo</span>
+        <input type="file" id="upload-${bizId}" accept="image/*" style="display:none" onchange="uploadPhoto(${bizId}, this)">
+      </div>
+    `;
+
     html += '</div>';
   }
 
@@ -158,6 +167,36 @@ function togglePhoto(url) {
     state.selectedPhotos.push(url);
   }
   renderPhotoGallery();
+}
+
+async function uploadPhoto(bizId, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const biz = state.businesses.find(b => b.id === bizId);
+  addLog('info', `Uploading photo for ${biz?.name || bizId}...`);
+
+  try {
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    const res = await fetch(`/api/businesses/${bizId}/photos`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Upload failed');
+
+    addLog('success', `Photo uploaded: ${result.photo.photo}`);
+
+    // Clear cached photos so gallery refreshes from DB
+    delete state.photos[bizId];
+    await renderPhotoGallery();
+  } catch (err) {
+    console.error('Upload failed:', err);
+    addLog('error', `Upload failed: ${err.message}`);
+  }
 }
 
 function updatePhotoCount() {
