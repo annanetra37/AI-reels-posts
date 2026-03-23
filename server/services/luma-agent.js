@@ -2,7 +2,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic();
 
-async function generateLumaPrompt({ businesses, postType, postStyle, selectedPhotos, captionResult, customDescription }) {
+async function generateLumaPrompt({ businesses, postType, postStyle, selectedPhotos, captionResult, customDescription, music }) {
   const bizNames = businesses.map(b => b.name).join(', ');
   const bizCategories = [...new Set(businesses.map(b => b.category))].join(', ');
   const bizDescriptions = businesses.map(b => `${b.name}: ${b.description}`).join('; ');
@@ -20,7 +20,17 @@ async function generateLumaPrompt({ businesses, postType, postStyle, selectedPho
     : apiSegmentCount * 9 - (photoCount % 2 === 1 ? 4 : 0); // pairs get 9s, odd last gets 5s
 
   let typeInstructions = '';
-  if (postType === 'reel') {
+  if (postStyle === 'animation') {
+    typeInstructions = `Generate a prompt for a 5-second "Animation" Instagram Reel.
+The user selected 1 product photo that should come to life with cinematic animation.
+The photo itself should be animated (subtle motion, zoom, parallax, particles, glow effects, etc.)
+for approximately 4 seconds, then smoothly FADE TO BLACK in the last second.
+
+You MUST generate a "segments" array with exactly 1 entry.
+The segment prompt must explicitly include "fade to black at the end" instruction.
+
+Make the animation mesmerizing, premium, and eye-catching — like a luxury brand ad.`;
+  } else if (postType === 'reel') {
     typeInstructions = `Generate a prompt for a ~${totalDuration}-second Instagram Reel video.
 The user has selected ${photoCount} product photo(s). To save cost, photos are paired into ${apiSegmentCount} video segment(s):
 ${photoCount === 1 ? '- 1 segment: single photo animation (5s)' :
@@ -45,6 +55,10 @@ Each subsequent image should showcase the selected products/brands harmoniously.
 All images must share a consistent visual style, color palette, and aesthetic.`;
   }
 
+  const musicBlock = music === 'auto'
+    ? `\n**Music:** The user wants background music. Suggest a music style/mood that fits the brand and video content. Include a "musicSuggestion" field in your JSON response describing the ideal music (genre, tempo, mood, instruments).`
+    : '';
+
   const customBlock = customDescription
     ? `\n**Custom Creative Direction from User:**\n${customDescription}\n(Incorporate these instructions into your creative brief and prompts.)\n`
     : '';
@@ -58,7 +72,7 @@ Generate a detailed, high-quality prompt for LumaLabs AI to create ${postType} c
 - Descriptions: ${bizDescriptions}
 - Post style: ${postStyle}
 - Number of product photos to feature: ${photoCount}
-${customBlock}
+${musicBlock}${customBlock}
 **Requirements:**
 ${typeInstructions}
 
@@ -75,6 +89,7 @@ Respond in this exact JSON format:
   "style": "<visual style description>",
   "mood": "<mood/atmosphere>",
   "colorPalette": ["<color1>", "<color2>", "<color3>"],
+  "musicSuggestion": "<describe ideal background music style, tempo, mood — or empty string if no music>",
   "totalDuration": ${totalDuration},
   "segments": [
     {"segmentNumber": 1, "description": "<what this segment shows>", "prompt": "<specific LumaLabs prompt for this segment's animation/motion>"}

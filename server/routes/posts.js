@@ -9,7 +9,7 @@ const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
-  const { businessIds, postType, postStyle, languages, selectedPhotos, customDescription } = req.body;
+  const { businessIds, postType, postStyle, languages, selectedPhotos, customDescription, music } = req.body;
 
   if (!businessIds?.length || !postType || !postStyle || !languages?.length) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -24,6 +24,11 @@ router.post('/generate', async (req, res) => {
 
   const send = (event, data) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // Mirror all events to backend terminal
+    if (event === 'log' || event === 'status') {
+      const prefix = event === 'status' ? '[STATUS]' : `[${(data.level || 'info').toUpperCase()}]`;
+      console.log(`${prefix} ${data.message}`);
+    }
   };
 
   try {
@@ -54,9 +59,10 @@ router.post('/generate', async (req, res) => {
 
     send('caption', captionResult);
 
-    // Step 3: If reel or carousel, generate LumaLabs prompt
+    // Step 3: If reel, animation, or carousel, generate LumaLabs prompt
+    const needsLuma = postType === 'reel' || postType === 'carousel' || postStyle === 'animation';
     let lumaResult = null;
-    if (postType === 'reel' || postType === 'carousel') {
+    if (needsLuma) {
       send('status', { stage: 'luma', message: '🎬 Generating creative brief for visual content...' });
       send('log', { level: 'info', message: `Generating LumaLabs creative brief for ${postType}...` });
       lumaResult = await generateLumaPrompt({
@@ -66,6 +72,7 @@ router.post('/generate', async (req, res) => {
         selectedPhotos,
         captionResult,
         customDescription,
+        music,
       });
       send('log', { level: 'success', message: `Luma brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
       send('luma', lumaResult);
@@ -74,7 +81,7 @@ router.post('/generate', async (req, res) => {
       if (process.env.LUMALABS_API_KEY && process.env.LUMALABS_API_KEY !== 'your-lumalabs-key') {
         send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
 
-        if (postType === 'reel') {
+        if (postType === 'reel' || postStyle === 'animation') {
           // Convert all selected photos to public URLs
           const publicPhotos = (selectedPhotos || [])
             .map(p => toPublicUrl(p))
@@ -83,19 +90,15 @@ router.post('/generate', async (req, res) => {
           if (publicPhotos.length === 0) {
             send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Set PUBLIC_URL in .env if using base64 photos.' });
           } else {
-            // Pair photos to minimize API calls:
-            // - 1 photo:  1 call (frame0 only, 5s)
-            // - 2 photos: 1 call (frame0→frame1, 9s ≈ 4.5s/photo)
-            // - 3 photos: 2 calls (photo1→photo2 5s, photo2→photo3 5s)
-            // - 4 photos: 2 calls (photo1→photo2 9s, photo3→photo4 9s)
             const pairs = [];
-            if (publicPhotos.length === 1) {
+            if (postStyle === 'animation') {
+              // Animation: single photo, 5s, prompt includes fade-to-black
+              pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
+            } else if (publicPhotos.length === 1) {
               pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
             } else if (publicPhotos.length === 2) {
               pairs.push({ start: publicPhotos[0], end: publicPhotos[1], duration: '9s' });
             } else {
-              // Pair consecutive photos: (0,1), (2,3), ...
-              // If odd number, last one gets its own 5s segment
               for (let i = 0; i < publicPhotos.length; i += 2) {
                 if (i + 1 < publicPhotos.length) {
                   pairs.push({ start: publicPhotos[i], end: publicPhotos[i + 1], duration: '9s' });
@@ -207,18 +210,21 @@ router.post('/generate', async (req, res) => {
 
 // POST /api/posts/:id/publish — publish to Instagram via Meta Graph API
 router.post('/:id/publish', async (req, res) => {
+  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id}`);
   try {
     const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Post not found' });
 
     const post = rows[0];
     const fullCaption = `${post.caption}\n\n${post.hashtags}`;
+    console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${(post.media_urls || []).length}`);
 
     const result = await publishToInstagram({
       postType: post.post_type,
       caption: fullCaption,
       mediaUrls: post.media_urls || post.selected_photos,
     });
+    console.log(`[PUBLISH] Successfully posted to Instagram — Meta post ID: ${result.id}`);
 
     await postsPool.query(`
       UPDATE generated_posts SET status = 'posted', meta_post_id = $1, posted_at = NOW()
@@ -227,7 +233,7 @@ router.post('/:id/publish', async (req, res) => {
 
     res.json({ success: true, metaPostId: result.id });
   } catch (err) {
-    console.error('Publish error:', err);
+    console.error('[PUBLISH] Error:', err);
     await postsPool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
     res.status(500).json({ error: err.message || 'Publishing failed' });
   }

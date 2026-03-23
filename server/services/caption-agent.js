@@ -23,6 +23,7 @@ const POST_STYLE_DETAILS = {
   'caption-this': 'A "Caption This" engagement-bait post with a fun image prompt',
   'aesthetic-mood': 'An "Aesthetic Mood Board" visually curated post with lifestyle vibes',
   'weekly-roundup': 'A "Weekly Roundup" digest post featuring multiple brands/products',
+  'animation': 'An "Animation" post — a single product photo comes to life with cinematic animation, creating a mesmerizing 4-second reel that fades to black',
 };
 
 async function generateCaption({ businesses, postType, postStyle, languages, selectedPhotos, customDescription }) {
@@ -33,26 +34,25 @@ async function generateCaption({ businesses, postType, postStyle, languages, sel
   const styleDescription = POST_STYLE_DETAILS[postStyle] || postStyle;
   const photoCount = selectedPhotos?.length || 0;
 
-  const prompt = `You are an elite Instagram marketing strategist and copywriter for a local business directory.
-Generate an Instagram ${postType} post with the following parameters:
+  const prompt = `You are a viral Instagram copywriter. You write captions that make people STOP scrolling.
 
 **Post Style:** ${styleDescription}
 **Featured Business(es):**
 ${bizDescriptions}
 
 **Post Type:** ${postType}
-**Number of selected photos:** ${photoCount}
 **Target languages:** ${languages.join(', ')}
-${customDescription ? `\n**Custom Direction from User:**\n${customDescription}\n(Incorporate these instructions into the caption tone, content, and style.)\n` : ''}
-INSTRUCTIONS:
-1. Write a SHORT, punchy caption for each requested language — MAX 2-3 sentences (under 150 characters ideally).
-2. Instagram users don't read long captions. Keep it snappy and scroll-stopping.
-3. One strong hook line + one CTA line is the ideal structure.
-4. Use 1-2 emojis max, strategically placed.
-5. The caption must match the post style perfectly.
-6. Generate 15-20 highly relevant hashtags mixing popular, niche, and branded tags.
-7. If multiple businesses are featured (e.g., "Top X" style), reference them briefly — don't write a paragraph about each.
-8. The tone should be trendy, authentic, and engaging — like a top-tier social media manager.
+${customDescription ? `\n**Custom Direction from User:**\n${customDescription}\n` : ''}
+RULES — follow these STRICTLY:
+1. MAX 1-2 sentences per caption. Under 100 characters is ideal. Think billboard, not blog.
+2. Make it PERSONAL to each SME — mention their actual product/name/tagline. You're marketing THEM specifically, not generic content.
+3. Use "eye sentences" — lines that create instant visual or emotional impact. Think: "Your morning deserves this." or "Handmade. Unforgettable." or "This changes everything."
+4. Create a WOW factor — surprise, intrigue, or delight in the first 3 words.
+5. 1 emoji max. Zero is also fine. Never emoji-spam.
+6. Write like Gen-Z talks to millennials — trendy, effortless cool, zero cringe.
+7. CTA should feel natural, not salesy. "Try it." beats "Visit our website today!"
+8. Generate 10-15 laser-targeted hashtags (mix of niche + trending). Quality over quantity.
+9. If multiple businesses: give each one a spotlight moment, don't list them generically.
 
 Respond in this exact JSON format:
 {
