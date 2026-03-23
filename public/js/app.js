@@ -6,6 +6,7 @@ const state = {
   selectedPhotos: [],   // array of photo URLs
   postType: null,
   postStyle: null,
+  music: 'none',
   languages: new Set(),
   currentStep: 1,
   generatedPost: null,  // { post, caption, luma }
@@ -72,6 +73,17 @@ document.getElementById('sme-search')?.addEventListener('input', renderSMEGrid);
 function toggleSME(id) {
   if (state.selectedSMEs.has(id)) {
     state.selectedSMEs.delete(id);
+    // Remove photos belonging to this deselected SME
+    const bizPhotos = state.photos[id];
+    if (bizPhotos) {
+      const toRemove = new Set();
+      if (bizPhotos.logo) toRemove.add(bizPhotos.logo);
+      if (bizPhotos.mainProductPhoto) toRemove.add(bizPhotos.mainProductPhoto);
+      for (const pp of (bizPhotos.productPhotos || [])) {
+        if (pp.photo) toRemove.add(pp.photo);
+      }
+      state.selectedPhotos = state.selectedPhotos.filter(p => !toRemove.has(p));
+    }
   } else {
     state.selectedSMEs.add(id);
   }
@@ -172,6 +184,12 @@ function selectPostStyle(el) {
   updateGenerateBtn();
 }
 
+function selectMusic(el) {
+  document.querySelectorAll('#music-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.music = el.dataset.value;
+}
+
 function toggleLang(el) {
   const lang = el.dataset.value;
   if (state.languages.has(lang)) {
@@ -262,6 +280,7 @@ async function generatePost() {
       postStyle: state.postStyle,
       languages: [...state.languages],
       selectedPhotos: state.selectedPhotos,
+      music: state.music,
       ...(customDesc ? { customDescription: customDesc } : {}),
     };
 
@@ -488,7 +507,12 @@ async function publishPost() {
     const result = await res.json();
     if (result.success) {
       showStatus('Successfully posted to Instagram!');
+      // Hide spinner and auto-dismiss status bar
+      document.getElementById('status-spinner').style.display = 'none';
+      setTimeout(() => hideStatus(), 3000);
       btn.innerHTML = '✅ Posted!';
+      // Refresh history to show updated status
+      fetchPostHistory();
     } else {
       throw new Error(result.error || 'Publishing failed');
     }
@@ -580,6 +604,7 @@ function renderPostHistory(posts) {
     <thead>
       <tr>
         <th>ID</th>
+        <th>SMEs</th>
         <th>Type</th>
         <th>Style</th>
         <th>Status</th>
@@ -591,6 +616,12 @@ function renderPostHistory(posts) {
       ${posts.map(p => {
         const statusClass = p.status === 'posted' ? 'posted' : p.status === 'failed' ? 'failed' : 'draft';
         const date = new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        // Resolve SME names from loaded businesses
+        const smeNames = (p.business_ids || [])
+          .map(id => state.businesses.find(b => b.id === id))
+          .filter(Boolean)
+          .map(b => `${b.emoji || ''} ${b.name}`.trim())
+          .join(', ') || '—';
         // Parse caption — could be JSON string or plain text
         let captionPreview = '';
         try {
@@ -604,11 +635,12 @@ function renderPostHistory(posts) {
 
         return `<tr class="history-row" onclick='loadPostFromHistory(${JSON.stringify(p.id)})' style="cursor:pointer">
           <td>#${p.id}</td>
+          <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${smeNames}</td>
           <td>${p.post_type}</td>
           <td>${p.post_style}</td>
           <td><span class="status-badge ${statusClass}">${p.status}</span></td>
           <td>${date}</td>
-          <td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
+          <td style="color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
         </tr>`;
       }).join('')}
     </tbody>
