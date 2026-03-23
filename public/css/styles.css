@@ -527,6 +527,10 @@ header p {
 .status-badge.posted { background: rgba(52,211,153,0.15); color: var(--success); }
 .status-badge.failed { background: rgba(248,113,113,0.15); color: var(--danger); }
 
+.history-row { transition: var(--transition); }
+.history-row:hover { background: var(--surface-hover); }
+.history-row.selected { background: rgba(124,58,237,0.12); border-left: 3px solid var(--primary); }
+
 /* ===== Activity Logs Panel ===== */
 .logs-panel {
   margin-top: 32px;

@@ -364,8 +364,9 @@ function renderPreview() {
   // Media preview — prefer Luma-generated media, fall back to selected photos
   const mediaEl = document.getElementById('preview-media');
   const generatedMedia = state.generatedPost.mediaUrls || [];
+  const postType = state.postType || state.generatedPost?.post?.post_type;
   if (generatedMedia.length > 0) {
-    if (state.postType === 'reel' && generatedMedia[0]) {
+    if (postType === 'reel' && generatedMedia[0]) {
       mediaEl.innerHTML = `<video src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
     } else {
       mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
@@ -385,7 +386,7 @@ function renderPreview() {
   }
 
   // Luma brief
-  if (luma && (state.postType === 'reel' || state.postType === 'carousel')) {
+  if (luma && (postType === 'reel' || postType === 'carousel')) {
     document.getElementById('luma-brief').style.display = 'block';
     document.getElementById('luma-prompt-text').textContent = luma.prompt || '';
     document.getElementById('luma-style').textContent = luma.style || '';
@@ -397,7 +398,7 @@ function renderPreview() {
     ).join('');
 
     // Carousel slides
-    if (state.postType === 'carousel' && luma.slides?.length) {
+    if (postType === 'carousel' && luma.slides?.length) {
       document.getElementById('carousel-preview-section').style.display = 'block';
       document.getElementById('carousel-slides').innerHTML = luma.slides.map((s, i) => `
         <div class="carousel-slide" style="display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;">
@@ -601,7 +602,7 @@ function renderPostHistory(posts) {
         }
         if (captionPreview.length > 60) captionPreview = captionPreview.slice(0, 60) + '...';
 
-        return `<tr>
+        return `<tr class="history-row" onclick='loadPostFromHistory(${JSON.stringify(p.id)})' style="cursor:pointer">
           <td>#${p.id}</td>
           <td>${p.post_type}</td>
           <td>${p.post_style}</td>
@@ -612,4 +613,74 @@ function renderPostHistory(posts) {
       }).join('')}
     </tbody>
   </table>`;
+
+  // Store posts for quick lookup
+  state.historyPosts = posts;
+}
+
+async function loadPostFromHistory(postId) {
+  const post = state.historyPosts?.find(p => p.id === postId);
+  if (!post) return;
+
+  // Parse caption from DB (could be JSON string or plain text)
+  let captionObj = {};
+  try {
+    captionObj = JSON.parse(post.caption);
+  } catch {
+    captionObj = { en: post.caption || '' };
+  }
+
+  // Reconstruct state.generatedPost to match what renderPreview expects
+  state.postType = post.post_type;
+  state.generatedPost = {
+    post: post,
+    caption: {
+      caption: captionObj,
+      hashtags: post.hashtags || '',
+      hook: '',
+      cta: '',
+    },
+    luma: post.luma_prompt ? { prompt: post.luma_prompt } : null,
+    mediaUrls: post.media_urls || [],
+  };
+
+  // Use selected_photos from the saved post
+  state.selectedPhotos = post.selected_photos || [];
+
+  // Try to resolve business info for avatar/username
+  if (post.business_ids?.length) {
+    const biz = state.businesses.find(b => post.business_ids.includes(b.id));
+    if (biz) {
+      document.getElementById('preview-username').textContent = biz.instagram || biz.name.toLowerCase().replace(/\s+/g, '_');
+      if (biz.logo) {
+        document.getElementById('preview-avatar').style.backgroundImage = `url(${biz.logo})`;
+        document.getElementById('preview-avatar').style.backgroundSize = 'cover';
+      }
+    }
+  }
+
+  renderPreview();
+
+  // Update publish button based on status
+  const btn = document.getElementById('btn-publish');
+  if (post.status === 'posted') {
+    btn.disabled = true;
+    btn.innerHTML = '✅ Already Posted';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '📱 Post to Instagram';
+  }
+
+  // Scroll to top of preview
+  document.getElementById('step-4').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Highlight the selected row
+  document.querySelectorAll('.history-row').forEach(r => r.classList.remove('selected'));
+  const rows = document.querySelectorAll('.history-row');
+  for (const row of rows) {
+    if (row.querySelector('td')?.textContent === `#${postId}`) {
+      row.classList.add('selected');
+      break;
+    }
+  }
 }
