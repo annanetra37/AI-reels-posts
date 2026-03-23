@@ -63,6 +63,22 @@ async function generateImage(prompt) {
 }
 
 /**
+ * Add audio to a completed video generation.
+ * This is a separate API call — POST /generations/{id}/audio
+ * Audio generation is free (no credits used).
+ * @param {string} generationId - The completed video generation ID
+ * @param {string} [prompt] - Audio prompt (e.g. "upbeat electronic music, energetic")
+ */
+async function addAudio(generationId, prompt) {
+  const body = {
+    generation_type: 'add_audio',
+    ...(prompt ? { prompt } : {}),
+  };
+  const generation = await lumaFetch(`/generations/${generationId}/audio`, body);
+  return generation;
+}
+
+/**
  * Poll for generation completion.
  */
 async function pollGeneration(generationId, maxWaitMs = 120000) {
@@ -76,4 +92,4 @@ async function pollGeneration(generationId, maxWaitMs = 120000) {
   throw new Error('LumaLabs generation timeout');
 }
 
-module.exports = { generateVideo, generateImage, pollGeneration };
+module.exports = { generateVideo, generateImage, addAudio, pollGeneration };
