@@ -240,6 +240,7 @@ function goToStep(step) {
 
   // Load data for step
   if (step === 2) renderPhotoGallery();
+  if (step === 4) fetchPostHistory();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -546,4 +547,69 @@ function addLog(level, message) {
 function toggleLogs() {
   const panel = document.getElementById('logs-panel');
   panel.classList.toggle('collapsed');
+}
+
+// ===== Post History =====
+async function fetchPostHistory() {
+  try {
+    const res = await fetch('/api/posts');
+    const posts = await res.json();
+    renderPostHistory(posts);
+  } catch (err) {
+    console.error('Failed to fetch post history:', err);
+    document.getElementById('post-history').innerHTML =
+      '<p style="color: var(--text-muted); font-size: 0.85rem;">Failed to load history.</p>';
+  }
+}
+
+function renderPostHistory(posts) {
+  const container = document.getElementById('post-history');
+  const badge = document.getElementById('history-count');
+
+  if (!posts.length) {
+    container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No posts yet.</p>';
+    badge.style.display = 'none';
+    return;
+  }
+
+  badge.textContent = posts.length;
+  badge.style.display = 'inline';
+
+  container.innerHTML = `<table class="history-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Style</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Caption</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${posts.map(p => {
+        const statusClass = p.status === 'posted' ? 'posted' : p.status === 'failed' ? 'failed' : 'draft';
+        const date = new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        // Parse caption — could be JSON string or plain text
+        let captionPreview = '';
+        try {
+          const parsed = JSON.parse(p.caption);
+          const firstLang = Object.values(parsed)[0] || '';
+          captionPreview = firstLang;
+        } catch {
+          captionPreview = p.caption || '';
+        }
+        if (captionPreview.length > 60) captionPreview = captionPreview.slice(0, 60) + '...';
+
+        return `<tr>
+          <td>#${p.id}</td>
+          <td>${p.post_type}</td>
+          <td>${p.post_style}</td>
+          <td><span class="status-badge ${statusClass}">${p.status}</span></td>
+          <td>${date}</td>
+          <td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
 }
