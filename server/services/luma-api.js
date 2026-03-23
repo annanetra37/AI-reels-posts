@@ -80,16 +80,22 @@ async function addAudio(generationId, prompt) {
 
 /**
  * Poll for generation completion.
+ * Video generation typically takes 2-5 minutes; default timeout is 5 minutes.
  */
-async function pollGeneration(generationId, maxWaitMs = 120000) {
+async function pollGeneration(generationId, maxWaitMs = 300000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     const gen = await lumaGet(`/generations/${generationId}`);
     if (gen.state === 'completed') return gen;
-    if (gen.state === 'failed') throw new Error('LumaLabs generation failed');
-    await new Promise(r => setTimeout(r, 3000));
+    if (gen.state === 'failed') {
+      throw new Error(`LumaLabs generation failed: ${gen.failure_reason || 'unknown reason'}`);
+    }
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    console.log(`[INFO] Polling generation ${generationId} — state: ${gen.state}, elapsed: ${elapsed}s`);
+    await new Promise(r => setTimeout(r, 5000));
   }
-  throw new Error('LumaLabs generation timeout');
+  const elapsedSec = Math.round((Date.now() - start) / 1000);
+  throw new Error(`LumaLabs generation timeout after ${elapsedSec}s`);
 }
 
 module.exports = { generateVideo, generateImage, addAudio, pollGeneration };
