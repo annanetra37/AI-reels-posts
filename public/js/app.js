@@ -618,7 +618,7 @@ function renderPostHistory(posts) {
         const date = new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
         // Resolve SME names from loaded businesses
         const smeNames = (p.business_ids || [])
-          .map(id => state.businesses.find(b => b.id === id))
+          .map(id => state.businesses.find(b => b.id == id))
           .filter(Boolean)
           .map(b => `${b.emoji || ''} ${b.name}`.trim())
           .join(', ') || '—';
@@ -681,7 +681,7 @@ async function loadPostFromHistory(postId) {
 
   // Try to resolve business info for avatar/username
   if (post.business_ids?.length) {
-    const biz = state.businesses.find(b => post.business_ids.includes(b.id));
+    const biz = state.businesses.find(b => post.business_ids.some(id => id == b.id));
     if (biz) {
       document.getElementById('preview-username').textContent = biz.instagram || biz.name.toLowerCase().replace(/\s+/g, '_');
       if (biz.logo) {
