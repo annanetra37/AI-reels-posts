@@ -1242,6 +1242,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ===== Music Library =====
 
+let musicFilter = 'all';
+let musicProgressInterval = null;
+
 async function loadMusicLibrary() {
   try {
     const res = await fetch('/api/music');
@@ -1257,6 +1260,10 @@ function renderMusicTracks() {
   const container = document.getElementById('music-tracks');
   if (!container) return;
 
+  const filtered = musicFilter === 'all'
+    ? state.musicTracks
+    : state.musicTracks.filter(t => t.mood === musicFilter || t.genre === musicFilter);
+
   const noMusicItem = `
     <div class="music-track-item ${!state.selectedTrack ? 'selected' : ''}" data-track-id="" onclick="selectMusicTrack(this, null)">
       <div class="music-track-info">
@@ -1264,37 +1271,50 @@ function renderMusicTracks() {
       </div>
     </div>`;
 
-  const trackItems = state.musicTracks.map(t => {
-    const isSelected = state.selectedTrack?.id === t.id;
-    const meta = [t.artist, t.genre, t.mood, t.duration_seconds ? formatDuration(t.duration_seconds) : null]
-      .filter(Boolean).join(' \u00B7 ');
+  const trackItems = filtered.map(t => {
+    const trackKey = t.builtin ? `'${t.id}'` : t.id;
+    const isSelected = state.selectedTrack &&
+      ((t.builtin && state.selectedTrack.id === t.id) || (!t.builtin && state.selectedTrack.id === t.id));
+    const dur = t.duration_seconds ? formatDuration(t.duration_seconds) : '';
+
     return `
-      <div class="music-track-item ${isSelected ? 'selected' : ''}" data-track-id="${t.id}" onclick="selectMusicTrack(this, ${t.id})">
-        <div class="music-track-actions">
-          <button class="music-btn-sm" onclick="event.stopPropagation(); previewMusicTrack('${t.url}')" title="Preview">&#9654;</button>
-        </div>
+      <div class="music-track-item ${isSelected ? 'selected' : ''}" data-track-id="${t.id}" data-mood="${t.mood || ''}" onclick="selectMusicTrack(this, ${trackKey})">
+        <button class="music-play-btn" onclick="event.stopPropagation(); previewMusicTrack(${trackKey})" title="Play preview">&#9654;</button>
         <div class="music-track-info">
           <span class="music-track-name">${escapeHtml(t.name)}</span>
-          ${meta ? `<span class="music-track-meta">${escapeHtml(meta)}</span>` : ''}
+          <div class="music-track-meta">
+            ${t.genre ? `<span class="tag">${escapeHtml(t.genre)}</span>` : ''}
+            ${t.mood ? `<span class="tag">${escapeHtml(t.mood)}</span>` : ''}
+            ${t.builtin ? '<span class="tag">built-in</span>' : ''}
+          </div>
         </div>
-        <div class="music-track-actions">
-          <button class="music-btn-sm" onclick="event.stopPropagation(); deleteMusicTrack(${t.id})" title="Delete">&times;</button>
-        </div>
+        <span class="music-track-duration">${dur}</span>
+        ${!t.builtin ? `<button class="music-track-delete" onclick="event.stopPropagation(); deleteMusicTrack(${t.id})" title="Delete">&times;</button>` : ''}
       </div>`;
   }).join('');
 
   container.innerHTML = noMusicItem + trackItems;
 }
 
-function selectMusicTrack(el, trackId) {
-  // Stop any preview
-  const player = document.getElementById('music-preview-player');
-  if (player) { player.pause(); player.src = ''; }
+function filterMusicTracks(el, filter) {
+  musicFilter = filter;
+  document.querySelectorAll('#music-filter-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  renderMusicTracks();
+}
 
-  if (!trackId) {
+function selectMusicTrack(el, trackId) {
+  if (!trackId && trackId !== 0) {
     state.selectedTrack = null;
+    stopMusicPreview();
+    removeKenBurns();
   } else {
     state.selectedTrack = state.musicTracks.find(t => t.id === trackId) || null;
+    // Auto-preview on select
+    if (state.selectedTrack) {
+      previewMusicTrack(trackId);
+      applyKenBurns();
+    }
   }
 
   // Update selection UI
@@ -1302,17 +1322,115 @@ function selectMusicTrack(el, trackId) {
   el.classList.add('selected');
 }
 
-function previewMusicTrack(url) {
+function previewMusicTrack(trackId) {
   const player = document.getElementById('music-preview-player');
   if (!player) return;
 
-  if (player.src === url && !player.paused) {
+  const track = state.musicTracks.find(t => t.id === trackId);
+  if (!track) return;
+
+  // If same track is playing, toggle pause
+  if (player.dataset.trackId == trackId && !player.paused) {
     player.pause();
+    updateNowPlaying(false);
     return;
   }
 
-  player.src = url;
+  player.src = track.url;
+  player.dataset.trackId = trackId;
   player.play().catch(() => {});
+
+  // Show now-playing bar
+  const npBar = document.getElementById('music-now-playing');
+  const npName = document.getElementById('music-np-name');
+  if (npBar) npBar.style.display = 'flex';
+  if (npName) npName.textContent = track.name;
+
+  updateNowPlaying(true);
+
+  // Update play button to pause icon
+  updatePlayButtons(trackId, true);
+
+  player.onended = () => {
+    updateNowPlaying(false);
+    updatePlayButtons(trackId, false);
+  };
+  player.onpause = () => {
+    updatePlayButtons(trackId, false);
+  };
+  player.onplay = () => {
+    updatePlayButtons(trackId, true);
+  };
+}
+
+function stopMusicPreview() {
+  const player = document.getElementById('music-preview-player');
+  if (player) { player.pause(); player.src = ''; }
+  updateNowPlaying(false);
+  const npBar = document.getElementById('music-now-playing');
+  if (npBar) npBar.style.display = 'none';
+}
+
+function toggleNowPlaying() {
+  const player = document.getElementById('music-preview-player');
+  if (!player) return;
+  if (player.paused) {
+    player.play().catch(() => {});
+  } else {
+    player.pause();
+  }
+}
+
+function updateNowPlaying(playing) {
+  const btn = document.getElementById('music-np-btn');
+  if (btn) btn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+
+  if (playing) {
+    if (musicProgressInterval) clearInterval(musicProgressInterval);
+    musicProgressInterval = setInterval(() => {
+      const player = document.getElementById('music-preview-player');
+      const fill = document.getElementById('music-progress-fill');
+      if (player && fill && player.duration) {
+        fill.style.width = (player.currentTime / player.duration * 100) + '%';
+      }
+    }, 200);
+  } else {
+    if (musicProgressInterval) { clearInterval(musicProgressInterval); musicProgressInterval = null; }
+  }
+}
+
+function updatePlayButtons(activeTrackId, playing) {
+  document.querySelectorAll('.music-track-item').forEach(item => {
+    const btn = item.querySelector('.music-play-btn');
+    if (!btn) return;
+    if (item.dataset.trackId == activeTrackId) {
+      btn.innerHTML = playing ? '&#9646;&#9646;' : '&#9654;';
+    } else {
+      btn.innerHTML = '&#9654;';
+    }
+  });
+}
+
+// Ken Burns effect on the phone preview image
+function applyKenBurns() {
+  const mediaEl = document.getElementById('preview-media');
+  if (!mediaEl) return;
+  const img = mediaEl.querySelector('img');
+  if (!img) return; // Only apply to images, not videos
+
+  img.classList.add('kenburns-active');
+  // Alternate between two Ken Burns styles randomly
+  if (Math.random() > 0.5) img.classList.add('kb-alt');
+  else img.classList.remove('kb-alt');
+}
+
+function removeKenBurns() {
+  const mediaEl = document.getElementById('preview-media');
+  if (!mediaEl) return;
+  const img = mediaEl.querySelector('img');
+  if (img) {
+    img.classList.remove('kenburns-active', 'kb-alt');
+  }
 }
 
 function toggleMusicUpload() {
@@ -1323,8 +1441,6 @@ function toggleMusicUpload() {
 async function uploadMusicTrack() {
   const name = document.getElementById('music-name').value.trim();
   const artist = document.getElementById('music-artist').value.trim();
-  const genre = document.getElementById('music-genre').value;
-  const mood = document.getElementById('music-mood').value;
   const fileInput = document.getElementById('music-file');
 
   if (!name) return alert('Track name is required');
@@ -1334,23 +1450,17 @@ async function uploadMusicTrack() {
   formData.append('file', fileInput.files[0]);
   formData.append('name', name);
   if (artist) formData.append('artist', artist);
-  if (genre) formData.append('genre', genre);
-  if (mood) formData.append('mood', mood);
 
   try {
     const res = await fetch('/api/music', { method: 'POST', body: formData });
     const track = await res.json();
     if (track.error) throw new Error(track.error);
 
-    // Reset form
     document.getElementById('music-name').value = '';
     document.getElementById('music-artist').value = '';
-    document.getElementById('music-genre').value = '';
-    document.getElementById('music-mood').value = '';
     fileInput.value = '';
     document.getElementById('music-upload-form').style.display = 'none';
 
-    // Reload library
     await loadMusicLibrary();
   } catch (err) {
     alert('Upload failed: ' + err.message);
@@ -1362,7 +1472,11 @@ async function deleteMusicTrack(id) {
 
   try {
     await fetch(`/api/music/${id}`, { method: 'DELETE' });
-    if (state.selectedTrack?.id === id) state.selectedTrack = null;
+    if (state.selectedTrack?.id === id) {
+      state.selectedTrack = null;
+      stopMusicPreview();
+      removeKenBurns();
+    }
     await loadMusicLibrary();
   } catch (err) {
     alert('Delete failed: ' + err.message);
