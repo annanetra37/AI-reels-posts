@@ -255,6 +255,62 @@
           <h3>Edit Hashtags</h3>
           <textarea id="edit-hashtags" rows="3" placeholder="Hashtags will appear here..."></textarea>
 
+          <!-- Music Library -->
+          <div class="music-library" style="margin-top: 20px;">
+            <h3 style="display: flex; align-items: center; justify-content: space-between;">
+              Background Music
+              <button class="btn btn-secondary" onclick="toggleMusicUpload()" style="padding: 4px 10px; font-size: 0.75rem;">+ Add Track</button>
+            </h3>
+
+            <!-- Upload form (hidden by default) -->
+            <div id="music-upload-form" style="display: none; margin-bottom: 12px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="music-name" placeholder="Track name *" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
+                <input type="text" id="music-artist" placeholder="Artist" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
+                <select id="music-genre" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
+                  <option value="">Genre</option>
+                  <option value="pop">Pop</option>
+                  <option value="electronic">Electronic</option>
+                  <option value="hiphop">Hip Hop</option>
+                  <option value="rnb">R&B</option>
+                  <option value="rock">Rock</option>
+                  <option value="jazz">Jazz</option>
+                  <option value="classical">Classical</option>
+                  <option value="ambient">Ambient</option>
+                  <option value="arabic">Arabic</option>
+                  <option value="other">Other</option>
+                </select>
+                <select id="music-mood" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
+                  <option value="">Mood</option>
+                  <option value="energetic">Energetic</option>
+                  <option value="chill">Chill</option>
+                  <option value="upbeat">Upbeat</option>
+                  <option value="emotional">Emotional</option>
+                  <option value="inspiring">Inspiring</option>
+                  <option value="playful">Playful</option>
+                  <option value="dramatic">Dramatic</option>
+                </select>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="music-file" accept="audio/*" style="flex: 1; font-size: 0.8rem;">
+                <button class="btn btn-primary" onclick="uploadMusicTrack()" style="padding: 6px 14px; font-size: 0.8rem;">Upload</button>
+              </div>
+            </div>
+
+            <!-- Track list -->
+            <div id="music-tracks" class="music-track-list">
+              <div class="music-track-item selected" data-track-id="" onclick="selectMusicTrack(this, null)">
+                <div class="music-track-info">
+                  <span class="music-track-name">No Music</span>
+                </div>
+              </div>
+              <!-- Tracks loaded dynamically -->
+            </div>
+
+            <!-- Currently playing preview -->
+            <audio id="music-preview-player" style="display: none;"></audio>
+          </div>
+
           <div class="publish-targets" style="margin-top: 16px; display: flex; gap: 16px; align-items: center;">
             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
               <input type="checkbox" id="publish-instagram" checked> Instagram
