@@ -603,7 +603,7 @@ function renderPreview() {
 
   // Show/hide video controls
   const videoControls = document.getElementById('video-controls');
-  if (hasVideo || (postType === 'reel' || postStyle === 'animation')) {
+  if (hasVideo || (state.postType === 'reel' || state.postStyle === 'animation')) {
     videoControls.style.display = 'block';
     syncRegenChips();
     document.getElementById('trim-panel').style.display = hasVideo ? 'block' : 'none';
