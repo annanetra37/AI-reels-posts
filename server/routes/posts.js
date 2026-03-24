@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
@@ -10,9 +11,32 @@ const { createStoryCollage } = require('../services/story-collage');
 const { uploadBuffer } = require('../services/cloudinary');
 const { mergeAudioWithVideo, createVideoFromImage } = require('../services/audio-merge');
 
+// POST /api/posts/upload-video — upload a user-provided video to Cloudinary
+const videoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+
+router.post('/upload-video', videoUpload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No video file uploaded' });
+
+  try {
+    const { cloudinary } = require('../services/cloudinary');
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'uploaded-videos', resource_type: 'video' },
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+    console.log(`[UPLOAD] Video uploaded to Cloudinary: ${result.secure_url}`);
+    res.json({ url: result.secure_url, duration: result.duration });
+  } catch (err) {
+    console.error('[UPLOAD] Video upload error:', err);
+    res.status(500).json({ error: err.message || 'Upload failed' });
+  }
+});
+
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
-  const { businessIds, postType, postStyle, videoModel: rawVideoModel, videoQuality, languages, selectedPhotos, customDescription, music } = req.body;
+  const { businessIds, postType, postStyle, videoModel: rawVideoModel, videoQuality, languages, selectedPhotos, customDescription, music, uploadedVideoUrl } = req.body;
   const videoModel = rawVideoModel || 'luma';
 
   if (!businessIds?.length || !postType || !postStyle || !languages?.length) {
@@ -63,8 +87,15 @@ router.post('/generate', async (req, res) => {
 
     send('caption', captionResult);
 
+    // Step 3: If user uploaded their own video, skip all AI video generation
+    if (uploadedVideoUrl) {
+      send('status', { stage: 'uploaded', message: '✅ Using your uploaded video' });
+      send('log', { level: 'success', message: `Using uploaded video: ${uploadedVideoUrl}` });
+      mediaUrls.push(uploadedVideoUrl);
+    }
+
     // Step 3a: For stories with multiple photos, create a collage image
-    if (postType === 'story' && selectedPhotos?.length > 1) {
+    else if (postType === 'story' && selectedPhotos?.length > 1) {
       send('status', { stage: 'collage', message: '🖼️ Creating story collage from your photos...' });
       send('log', { level: 'info', message: `Compositing ${selectedPhotos.length} photos into a single 1080×1920 story image...` });
       const collageBuf = await createStoryCollage(selectedPhotos);
@@ -73,8 +104,8 @@ router.post('/generate', async (req, res) => {
       send('log', { level: 'success', message: `Story collage ready: ${collageUrl}` });
     }
 
-    // Step 3b: If reel, animation, or carousel, generate LumaLabs prompt
-    const needsLuma = postType === 'reel' || postType === 'carousel' || postStyle === 'animation';
+    // Step 3b: If reel, animation, or carousel, generate LumaLabs prompt (skip if user uploaded video)
+    const needsLuma = !uploadedVideoUrl && (postType === 'reel' || postType === 'carousel' || postStyle === 'animation');
     let lumaResult = null;
     if (needsLuma) {
       send('status', { stage: 'luma', message: '🎬 Generating creative brief for visual content...' });

@@ -111,6 +111,25 @@
         <div class="chip-group" id="video-model-chips">
           <div class="chip selected" data-value="luma" onclick="selectVideoModel(this)">LumaLabs</div>
           <div class="chip" data-value="pika" onclick="selectVideoModel(this)">Pika 2.2</div>
+          <div class="chip" data-value="upload" onclick="selectVideoModel(this)">Upload My Video</div>
+        </div>
+      </div>
+
+      <!-- Upload video area (shown only when "Upload My Video" is selected) -->
+      <div class="options-group" id="video-upload-area" style="display: none;">
+        <label>Upload Video File</label>
+        <div id="video-drop-zone" class="video-drop-zone" onclick="document.getElementById('video-file-input').click()">
+          <input type="file" id="video-file-input" accept="video/*" style="display:none" onchange="handleVideoFileSelect(this)">
+          <div id="video-drop-content">
+            <span style="font-size: 2rem;">🎥</span>
+            <p style="margin: 8px 0 4px; font-weight: 600;">Drop your video here or click to browse</p>
+            <p style="font-size: 0.75rem; color: var(--text-muted);">MP4, MOV, WebM — max 100MB</p>
+          </div>
+          <div id="video-upload-preview" style="display: none;">
+            <video id="uploaded-video-preview" style="max-width: 100%; max-height: 200px; border-radius: 8px;" controls></video>
+            <p id="uploaded-video-name" style="margin-top: 6px; font-size: 0.8rem; font-weight: 600;"></p>
+            <button class="btn btn-secondary" onclick="event.stopPropagation(); clearUploadedVideo()" style="margin-top: 6px; padding: 4px 12px; font-size: 0.75rem;">Remove</button>
+          </div>
         </div>
       </div>
 
