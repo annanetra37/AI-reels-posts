@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS generated_posts (
   fb_post_id VARCHAR(100),              -- ID returned by Facebook Page API
   posted_to_ig BOOLEAN DEFAULT FALSE,   -- per-platform tracking
   posted_to_fb BOOLEAN DEFAULT FALSE,   -- per-platform tracking
+  repost_count INTEGER DEFAULT 0,       -- how many times reposted (0 = first post only)
+  repost_history JSONB DEFAULT '[]',    -- [{at, platforms: ["ig","fb"]}]
   posted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

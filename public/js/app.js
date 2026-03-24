@@ -786,27 +786,32 @@ function updatePublishButton() {
   const fbPosted = !!post.posted_to_fb;
   const igCheckbox = document.getElementById('publish-instagram');
   const fbCheckbox = document.getElementById('publish-facebook');
+  const repostCount = post.repost_count || 0;
+  const repostLabel = repostCount > 0 ? ` [${repostCount}x reposted]` : '';
+
+  // Show/hide the reset-for-repost button
+  const resetBtn = document.getElementById('btn-reset-repost');
+  if (resetBtn) resetBtn.style.display = (igPosted || fbPosted) ? 'inline-flex' : 'none';
 
   if (igPosted && fbPosted) {
-    // Both platforms done
+    // Both done — show repost option via reset button, disable publish
     btn.disabled = true;
-    btn.innerHTML = '✅ Posted to Both';
+    btn.innerHTML = `✅ Posted to Both${repostLabel}`;
     igCheckbox.disabled = true;
     fbCheckbox.disabled = true;
   } else if (igPosted || fbPosted) {
-    // Partial — allow reposting to the other platform
+    // Partial — allow posting to the other platform
     const postedPlatforms = [];
     if (igPosted) postedPlatforms.push('IG');
     if (fbPosted) postedPlatforms.push('FB');
 
-    // Disable already-posted checkboxes, enable remaining
     igCheckbox.checked = !igPosted;
     igCheckbox.disabled = igPosted;
     fbCheckbox.checked = !fbPosted;
     fbCheckbox.disabled = fbPosted;
 
     btn.disabled = false;
-    btn.innerHTML = `🔄 Repost (${postedPlatforms.join('+')} done)`;
+    btn.innerHTML = `🔄 Post to remaining (${postedPlatforms.join('+')} done)${repostLabel}`;
   } else if (post.status === 'failed') {
     btn.disabled = false;
     btn.innerHTML = '🔄 Retry Publish';
@@ -814,9 +819,61 @@ function updatePublishButton() {
     fbCheckbox.disabled = false;
   } else {
     btn.disabled = false;
-    btn.innerHTML = '📱 Publish';
+    btn.innerHTML = repostCount > 0 ? `📱 Publish Again${repostLabel}` : '📱 Publish';
     igCheckbox.disabled = false;
     fbCheckbox.disabled = false;
+  }
+}
+
+// ===== Manual Status Change =====
+async function changePostStatus(postId, newStatus) {
+  try {
+    const res = await fetch(`/api/posts/${postId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    const updated = await res.json();
+    if (updated.error) throw new Error(updated.error);
+
+    // Update local state if this is the currently loaded post
+    if (state.generatedPost?.post?.id === postId) {
+      state.generatedPost.post.status = newStatus;
+      // If reset to draft, clear platform flags locally too
+      if (newStatus === 'draft' || newStatus === 'generated') {
+        state.generatedPost.post.posted_to_ig = updated.posted_to_ig;
+        state.generatedPost.post.posted_to_fb = updated.posted_to_fb;
+      }
+      updatePublishButton();
+    }
+    fetchPostHistory();
+  } catch (err) {
+    alert('Failed to update status: ' + err.message);
+    fetchPostHistory(); // refresh to revert the dropdown
+  }
+}
+
+async function resetForRepost() {
+  const post = state.generatedPost?.post;
+  if (!post) return;
+  if (!confirm('Reset platform flags so you can repost to all platforms?')) return;
+
+  try {
+    const res = await fetch(`/api/posts/${post.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'draft', resetPlatforms: true }),
+    });
+    const updated = await res.json();
+    if (updated.error) throw new Error(updated.error);
+
+    state.generatedPost.post = updated;
+    updatePublishButton();
+    fetchPostHistory();
+    showStatus('Post reset — ready to repost to all platforms');
+    setTimeout(() => hideStatus(), 2000);
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
   }
 }
 
@@ -905,6 +962,7 @@ function renderPostHistory(posts) {
         <th>Type</th>
         <th>Style</th>
         <th>Status</th>
+        <th>Reposts</th>
         <th>Created</th>
         <th>Caption</th>
       </tr>
@@ -918,6 +976,7 @@ function renderPostHistory(posts) {
         if (p.posted_to_ig) platforms.push('IG');
         if (p.posted_to_fb) platforms.push('FB');
         const platformLabel = platforms.length ? ` (${platforms.join('+')})` : '';
+        const repostCount = p.repost_count || 0;
         // Resolve SME names from loaded businesses
         const smeNames = (p.business_ids || [])
           .map(id => state.businesses.find(b => b.id == id))
@@ -940,7 +999,14 @@ function renderPostHistory(posts) {
           <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${smeNames}</td>
           <td>${p.post_type}</td>
           <td>${p.post_style}</td>
-          <td><span class="status-badge ${statusClass}">${p.status}${platformLabel}</span></td>
+          <td>
+            <select class="status-select ${statusClass}" onchange="event.stopPropagation(); changePostStatus(${p.id}, this.value)" title="Click to change status">
+              ${['draft', 'generated', 'posted', 'partial', 'failed'].map(s =>
+                `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}${s === p.status ? platformLabel : ''}</option>`
+              ).join('')}
+            </select>
+          </td>
+          <td style="text-align:center">${repostCount > 0 ? `<span class="repost-badge">${repostCount}x</span>` : '—'}</td>
           <td>${date}</td>
           <td style="color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
         </tr>`;

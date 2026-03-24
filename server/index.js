@@ -18,6 +18,8 @@ const PORT = process.env.PORT || 3000;
     await postsPool.query(`
       ALTER TABLE generated_posts ADD COLUMN IF NOT EXISTS posted_to_ig BOOLEAN DEFAULT FALSE;
       ALTER TABLE generated_posts ADD COLUMN IF NOT EXISTS posted_to_fb BOOLEAN DEFAULT FALSE;
+      ALTER TABLE generated_posts ADD COLUMN IF NOT EXISTS repost_count INTEGER DEFAULT 0;
+      ALTER TABLE generated_posts ADD COLUMN IF NOT EXISTS repost_history JSONB DEFAULT '[]';
     `);
     // Backfill existing rows: if meta_post_id is set, mark posted_to_ig; if fb_post_id, mark posted_to_fb
     await postsPool.query(`
