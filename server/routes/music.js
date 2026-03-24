@@ -3,18 +3,56 @@ const router = express.Router();
 const multer = require('multer');
 const { postsPool } = require('../db/pool');
 const { cloudinary } = require('../services/cloudinary');
+const { getTrackIds, getTrackMeta, generateTrackBuffer } = require('../services/sample-tracks');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-// GET /api/music — list all tracks
+// Cache generated audio buffers in memory (they're small ~1.3MB each)
+const audioCache = {};
+
+// GET /api/music — list all tracks (built-in + user-uploaded)
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await postsPool.query('SELECT * FROM music_tracks ORDER BY created_at DESC');
-    res.json(rows);
+    // Built-in sample tracks
+    const builtIn = getTrackIds().map(id => ({
+      ...getTrackMeta(id),
+      builtin: true,
+      url: `/api/music/sample/${id}.wav`,
+    }));
+
+    // User-uploaded tracks from DB
+    let userTracks = [];
+    try {
+      const { rows } = await postsPool.query('SELECT * FROM music_tracks ORDER BY created_at DESC');
+      userTracks = rows.map(r => ({ ...r, builtin: false }));
+    } catch {
+      // DB table might not exist yet — that's OK
+    }
+
+    res.json([...builtIn, ...userTracks]);
   } catch (err) {
     console.error('Music list error:', err);
     res.status(500).json({ error: 'Failed to fetch music library' });
   }
+});
+
+// GET /api/music/sample/:id.wav — serve a built-in sample track
+router.get('/sample/:id.wav', (req, res) => {
+  const id = req.params.id;
+  if (!getTrackMeta(id)) return res.status(404).json({ error: 'Track not found' });
+
+  // Generate and cache
+  if (!audioCache[id]) {
+    console.log(`[MUSIC] Generating built-in track: ${id}`);
+    audioCache[id] = generateTrackBuffer(id);
+  }
+
+  res.set({
+    'Content-Type': 'audio/wav',
+    'Content-Length': audioCache[id].length,
+    'Cache-Control': 'public, max-age=86400',
+  });
+  res.send(audioCache[id]);
 });
 
 // POST /api/music — upload a new track
@@ -55,7 +93,7 @@ router.post('/', upload.single('file'), async (req, res) => {
   }
 });
 
-// DELETE /api/music/:id — delete a track
+// DELETE /api/music/:id — delete a user-uploaded track
 router.delete('/:id', async (req, res) => {
   try {
     const { rows } = await postsPool.query('SELECT * FROM music_tracks WHERE id = $1', [req.params.id]);

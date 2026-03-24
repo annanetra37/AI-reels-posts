@@ -278,42 +278,29 @@
           <div class="music-library" style="margin-top: 20px;">
             <h3 style="display: flex; align-items: center; justify-content: space-between;">
               Background Music
-              <button class="btn btn-secondary" onclick="toggleMusicUpload()" style="padding: 4px 10px; font-size: 0.75rem;">+ Add Track</button>
+              <button class="btn btn-secondary" onclick="toggleMusicUpload()" style="padding: 4px 10px; font-size: 0.75rem;">+ Upload Own</button>
             </h3>
 
             <!-- Upload form (hidden by default) -->
-            <div id="music-upload-form" style="display: none; margin-bottom: 12px;">
+            <div id="music-upload-form" style="display: none; margin-bottom: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);">
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-                <input type="text" id="music-name" placeholder="Track name *" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
-                <input type="text" id="music-artist" placeholder="Artist" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
-                <select id="music-genre" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
-                  <option value="">Genre</option>
-                  <option value="pop">Pop</option>
-                  <option value="electronic">Electronic</option>
-                  <option value="hiphop">Hip Hop</option>
-                  <option value="rnb">R&B</option>
-                  <option value="rock">Rock</option>
-                  <option value="jazz">Jazz</option>
-                  <option value="classical">Classical</option>
-                  <option value="ambient">Ambient</option>
-                  <option value="arabic">Arabic</option>
-                  <option value="other">Other</option>
-                </select>
-                <select id="music-mood" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--bg);">
-                  <option value="">Mood</option>
-                  <option value="energetic">Energetic</option>
-                  <option value="chill">Chill</option>
-                  <option value="upbeat">Upbeat</option>
-                  <option value="emotional">Emotional</option>
-                  <option value="inspiring">Inspiring</option>
-                  <option value="playful">Playful</option>
-                  <option value="dramatic">Dramatic</option>
-                </select>
+                <input type="text" id="music-name" placeholder="Track name *" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--surface); color: var(--text);">
+                <input type="text" id="music-artist" placeholder="Artist" style="padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--surface); color: var(--text);">
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <input type="file" id="music-file" accept="audio/*" style="flex: 1; font-size: 0.8rem;">
                 <button class="btn btn-primary" onclick="uploadMusicTrack()" style="padding: 6px 14px; font-size: 0.8rem;">Upload</button>
               </div>
+            </div>
+
+            <!-- Filter chips -->
+            <div class="chip-group" id="music-filter-chips" style="margin-bottom: 8px; flex-wrap: wrap;">
+              <div class="chip chip-sm selected" data-filter="all" onclick="filterMusicTracks(this, 'all')">All</div>
+              <div class="chip chip-sm" data-filter="energetic" onclick="filterMusicTracks(this, 'energetic')">Energetic</div>
+              <div class="chip chip-sm" data-filter="chill" onclick="filterMusicTracks(this, 'chill')">Chill</div>
+              <div class="chip chip-sm" data-filter="upbeat" onclick="filterMusicTracks(this, 'upbeat')">Upbeat</div>
+              <div class="chip chip-sm" data-filter="dramatic" onclick="filterMusicTracks(this, 'dramatic')">Dramatic</div>
+              <div class="chip chip-sm" data-filter="inspiring" onclick="filterMusicTracks(this, 'inspiring')">Inspiring</div>
             </div>
 
             <!-- Track list -->
@@ -323,10 +310,19 @@
                   <span class="music-track-name">No Music</span>
                 </div>
               </div>
-              <!-- Tracks loaded dynamically -->
             </div>
 
-            <!-- Currently playing preview -->
+            <!-- Now playing bar -->
+            <div id="music-now-playing" class="music-now-playing" style="display: none;">
+              <button class="music-play-btn" id="music-np-btn" onclick="toggleNowPlaying()">&#9646;&#9646;</button>
+              <div class="music-np-info">
+                <span id="music-np-name">—</span>
+                <div class="music-progress-bar">
+                  <div class="music-progress-fill" id="music-progress-fill"></div>
+                </div>
+              </div>
+            </div>
+
             <audio id="music-preview-player" style="display: none;"></audio>
           </div>
 
