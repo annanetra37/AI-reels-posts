@@ -3,7 +3,7 @@ const router = express.Router();
 const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
-const { publishToInstagram } = require('../services/meta-api');
+const { publishToInstagram, publishToFacebook } = require('../services/meta-api');
 const { getProvider, isConfigured } = require('../services/video-provider');
 const { toPublicUrl } = require('../services/upload');
 const { createStoryCollage } = require('../services/story-collage');
@@ -496,30 +496,74 @@ router.post('/:id/trim-video', async (req, res) => {
   }
 });
 
-// POST /api/posts/:id/publish — publish to Instagram via Meta Graph API
+// POST /api/posts/:id/publish — publish to Instagram and/or Facebook
 router.post('/:id/publish', async (req, res) => {
-  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id}`);
+  const { instagram = true, facebook = false } = req.body || {};
+  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id} — IG: ${instagram}, FB: ${facebook}`);
   try {
     const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Post not found' });
 
     const post = rows[0];
     const fullCaption = `${post.caption}\n\n${post.hashtags}`;
-    console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${(post.media_urls || []).length}`);
+    const mediaUrls = post.media_urls || post.selected_photos;
+    console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${(mediaUrls || []).length}`);
 
-    const result = await publishToInstagram({
-      postType: post.post_type,
-      caption: fullCaption,
-      mediaUrls: post.media_urls || post.selected_photos,
-    });
-    console.log(`[PUBLISH] Successfully posted to Instagram — Meta post ID: ${result.id}`);
+    let instagramId = null;
+    let facebookId = null;
+    const errors = [];
 
+    // Publish to Instagram
+    if (instagram) {
+      try {
+        const igResult = await publishToInstagram({
+          postType: post.post_type,
+          caption: fullCaption,
+          mediaUrls,
+        });
+        instagramId = igResult.id;
+        console.log(`[PUBLISH] Instagram posted — ID: ${instagramId}`);
+      } catch (igErr) {
+        console.error('[PUBLISH] Instagram error:', igErr);
+        errors.push(`Instagram: ${igErr.message}`);
+      }
+    }
+
+    // Publish to Facebook
+    if (facebook) {
+      try {
+        const fbResult = await publishToFacebook({
+          postType: post.post_type,
+          caption: fullCaption,
+          mediaUrls,
+        });
+        facebookId = fbResult.id || fbResult.post_id;
+        console.log(`[PUBLISH] Facebook posted — ID: ${facebookId}`);
+      } catch (fbErr) {
+        console.error('[PUBLISH] Facebook error:', fbErr);
+        errors.push(`Facebook: ${fbErr.message}`);
+      }
+    }
+
+    // If both failed, report failure
+    if (instagram && !instagramId && facebook && !facebookId) {
+      await postsPool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
+      return res.status(500).json({ error: errors.join('; ') });
+    }
+
+    // Update DB — store whichever ID we got
+    const metaPostId = instagramId || facebookId;
     await postsPool.query(`
-      UPDATE generated_posts SET status = 'posted', meta_post_id = $1, posted_at = NOW()
-      WHERE id = $2
-    `, [result.id, post.id]);
+      UPDATE generated_posts SET status = 'posted', meta_post_id = $1, fb_post_id = $2, posted_at = NOW()
+      WHERE id = $3
+    `, [metaPostId, facebookId, post.id]);
 
-    res.json({ success: true, metaPostId: result.id });
+    res.json({
+      success: true,
+      instagramId,
+      facebookId,
+      errors: errors.length ? errors : undefined,
+    });
   } catch (err) {
     console.error('[PUBLISH] Error:', err);
     await postsPool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
