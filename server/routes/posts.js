@@ -603,23 +603,52 @@ router.post('/:id/publish', async (req, res) => {
       }
     }
 
-    // If both failed, report failure
-    if (instagram && !instagramId && facebook && !facebookId) {
+    // Determine what was requested vs what succeeded
+    const igRequested = !!instagram;
+    const fbRequested = !!facebook;
+    const igSucceeded = !!instagramId;
+    const fbSucceeded = !!facebookId;
+    const anyRequested = igRequested || fbRequested;
+    const anySucceeded = igSucceeded || fbSucceeded;
+    const allRequestedSucceeded = (!igRequested || igSucceeded) && (!fbRequested || fbSucceeded);
+
+    // If everything we requested failed, report failure
+    if (anyRequested && !anySucceeded) {
       await postsPool.query("UPDATE generated_posts SET status = 'failed' WHERE id = $1", [req.params.id]);
       return res.status(500).json({ error: errors.join('; ') });
     }
 
-    // Update DB — store whichever ID we got
-    const metaPostId = instagramId || facebookId;
+    // Update DB — per-platform tracking + overall status
+    // Use COALESCE to preserve previously set platform flags (for reposting)
+    const status = allRequestedSucceeded ? 'posted' : 'partial';
     await postsPool.query(`
-      UPDATE generated_posts SET status = 'posted', meta_post_id = $1, fb_post_id = $2, posted_at = NOW()
-      WHERE id = $3
-    `, [metaPostId, facebookId, post.id]);
+      UPDATE generated_posts
+      SET status = $1,
+          meta_post_id = COALESCE($2, meta_post_id),
+          fb_post_id = COALESCE($3, fb_post_id),
+          posted_to_ig = posted_to_ig OR $4,
+          posted_to_fb = posted_to_fb OR $5,
+          posted_at = COALESCE(posted_at, NOW())
+      WHERE id = $6
+    `, [status, instagramId, facebookId, igSucceeded, fbSucceeded, post.id]);
+
+    // If all platforms that were EVER requested are now posted, upgrade to 'posted'
+    if (status === 'partial') {
+      // Check if ALL platforms are now covered
+      const { rows: [updated] } = await postsPool.query(
+        'SELECT posted_to_ig, posted_to_fb FROM generated_posts WHERE id = $1', [post.id]
+      );
+      if (updated.posted_to_ig && updated.posted_to_fb) {
+        await postsPool.query("UPDATE generated_posts SET status = 'posted' WHERE id = $1", [post.id]);
+      }
+    }
 
     res.json({
       success: true,
       instagramId,
       facebookId,
+      postedToIg: igSucceeded,
+      postedToFb: fbSucceeded,
       errors: errors.length ? errors : undefined,
     });
   } catch (err) {

@@ -525,6 +525,7 @@ header p {
 .status-badge.draft { background: rgba(148,163,184,0.15); color: var(--text-muted); }
 .status-badge.generated { background: rgba(124,58,237,0.15); color: var(--primary); }
 .status-badge.posted { background: rgba(52,211,153,0.15); color: var(--success); }
+.status-badge.partial { background: rgba(251,191,36,0.15); color: #f59e0b; }
 .status-badge.failed { background: rgba(248,113,113,0.15); color: var(--danger); }
 
 .history-row { transition: var(--transition); }

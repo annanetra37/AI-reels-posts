@@ -93,6 +93,44 @@ router.post('/', upload.single('file'), async (req, res) => {
   }
 });
 
+// GET /api/music/freesound/search — search Freesound for royalty-free music
+router.get('/freesound/search', async (req, res) => {
+  const apiKey = process.env.FREESOUND_API_KEY;
+  if (!apiKey) return res.status(400).json({ error: 'FREESOUND_API_KEY not configured. Get a free key at https://freesound.org/apiv2/apply' });
+
+  const { q = 'background music', page = 1 } = req.query;
+  try {
+    const url = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(q)}&filter=duration:[5 TO 60] type:mp3&fields=id,name,username,duration,previews,tags,avg_rating&sort=rating_desc&page=${page}&page_size=20&token=${apiKey}`;
+    const fsRes = await fetch(url);
+    const data = await fsRes.json();
+    if (data.detail) throw new Error(data.detail);
+
+    const tracks = (data.results || []).map(s => ({
+      id: `freesound-${s.id}`,
+      name: s.name.replace(/\.[^.]+$/, '').slice(0, 60),
+      artist: s.username,
+      genre: 'freesound',
+      mood: (s.tags || []).find(t => ['chill', 'energetic', 'dramatic', 'upbeat', 'emotional', 'inspiring'].includes(t)) || 'other',
+      duration_seconds: Math.round(s.duration),
+      rating: s.avg_rating,
+      url: s.previews?.['preview-hq-mp3'] || s.previews?.['preview-lq-mp3'] || null,
+      freesound_id: s.id,
+      builtin: false,
+      external: true,
+    })).filter(t => t.url);
+
+    res.json({
+      tracks,
+      count: data.count || 0,
+      next: data.next ? true : false,
+      page: Number(page),
+    });
+  } catch (err) {
+    console.error('Freesound search error:', err);
+    res.status(500).json({ error: err.message || 'Freesound search failed' });
+  }
+});
+
 // DELETE /api/music/:id — delete a user-uploaded track
 router.delete('/:id', async (req, res) => {
   try {

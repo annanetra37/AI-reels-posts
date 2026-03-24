@@ -276,10 +276,24 @@
 
           <!-- Music Library -->
           <div class="music-library" style="margin-top: 20px;">
-            <h3 style="display: flex; align-items: center; justify-content: space-between;">
+            <h3 style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
               Background Music
-              <button class="btn btn-secondary" onclick="toggleMusicUpload()" style="padding: 4px 10px; font-size: 0.75rem;">+ Upload Own</button>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-secondary" onclick="toggleFreesoundSearch()" style="padding: 4px 10px; font-size: 0.75rem;">🔍 Freesound</button>
+                <button class="btn btn-secondary" onclick="toggleMusicUpload()" style="padding: 4px 10px; font-size: 0.75rem;">+ Upload Own</button>
+              </div>
             </h3>
+
+            <!-- Freesound search (hidden by default) -->
+            <div id="freesound-panel" style="display: none; margin-bottom: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+              <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="freesound-query" placeholder="Search Freesound (e.g. chill beat, upbeat pop...)" value="background music" style="flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--surface); color: var(--text);">
+                <button class="btn btn-primary" onclick="searchFreesound()" style="padding: 6px 14px; font-size: 0.8rem;">Search</button>
+              </div>
+              <div id="freesound-results" style="max-height: 250px; overflow-y: auto;"></div>
+              <div id="freesound-pagination" style="display: flex; justify-content: center; gap: 8px; margin-top: 8px;"></div>
+              <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">Sounds from <a href="https://freesound.org" target="_blank" style="color: var(--primary);">Freesound.org</a> — Creative Commons licensed</p>
+            </div>
 
             <!-- Upload form (hidden by default) -->
             <div id="music-upload-form" style="display: none; margin-bottom: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);">
