@@ -566,6 +566,7 @@ function renderPreview() {
   const videoControls = document.getElementById('video-controls');
   if (hasVideo || (postType === 'reel' || postStyle === 'animation')) {
     videoControls.style.display = 'block';
+    syncRegenChips();
     document.getElementById('trim-panel').style.display = hasVideo ? 'block' : 'none';
     if (hasVideo) initTrimSlider();
   } else {
@@ -826,6 +827,35 @@ function renderPostHistory(posts) {
 
   // Store posts for quick lookup
   state.historyPosts = posts;
+}
+
+// ===== Regen Settings (inline on preview page) =====
+function selectRegenModel(el) {
+  document.querySelectorAll('#regen-model-chips .chip-sm').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.videoModel = el.dataset.value;
+  // Sync Step 3 chips too
+  document.querySelectorAll('#video-model-chips .chip').forEach(c => c.classList.toggle('selected', c.dataset.value === state.videoModel));
+}
+
+function selectRegenQuality(el) {
+  document.querySelectorAll('#regen-quality-chips .chip-sm').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.videoQuality = el.dataset.value;
+  document.querySelectorAll('#video-quality-chips .chip').forEach(c => c.classList.toggle('selected', c.dataset.value === state.videoQuality));
+}
+
+function selectRegenMusic(el) {
+  document.querySelectorAll('#regen-music-chips .chip-sm').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.music = el.dataset.value;
+  document.querySelectorAll('#music-chips .chip').forEach(c => c.classList.toggle('selected', c.dataset.value === state.music));
+}
+
+function syncRegenChips() {
+  document.querySelectorAll('#regen-model-chips .chip-sm').forEach(c => c.classList.toggle('selected', c.dataset.value === state.videoModel));
+  document.querySelectorAll('#regen-quality-chips .chip-sm').forEach(c => c.classList.toggle('selected', c.dataset.value === state.videoQuality));
+  document.querySelectorAll('#regen-music-chips .chip-sm').forEach(c => c.classList.toggle('selected', c.dataset.value === state.music));
 }
 
 // ===== Regenerate Video Only =====

@@ -765,6 +765,49 @@ header p {
   .form-grid { grid-template-columns: 1fr; }
 }
 
+/* ===== Regen Settings (compact inline) ===== */
+.regen-settings {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.regen-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.regen-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 50px;
+}
+
+.chip-group-sm { gap: 4px; }
+
+.chip-sm {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: var(--transition);
+  user-select: none;
+}
+
+.chip-sm:hover { border-color: var(--primary); }
+.chip-sm.selected { background: var(--primary); border-color: var(--primary); color: white; }
+
 /* ===== Video Trim Controls ===== */
 .trim-panel {
   background: var(--bg);

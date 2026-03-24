@@ -186,6 +186,31 @@
 
           <!-- Video controls (shown when video is present) -->
           <div id="video-controls" style="display:none; margin-top: 12px;">
+            <!-- Inline video settings for regeneration -->
+            <div class="regen-settings">
+              <div class="regen-setting-row">
+                <span class="regen-label">Model</span>
+                <div class="chip-group chip-group-sm" id="regen-model-chips">
+                  <div class="chip chip-sm selected" data-value="luma" onclick="selectRegenModel(this)">LumaLabs</div>
+                  <div class="chip chip-sm" data-value="pika" onclick="selectRegenModel(this)">Pika 2.2</div>
+                </div>
+              </div>
+              <div class="regen-setting-row">
+                <span class="regen-label">Quality</span>
+                <div class="chip-group chip-group-sm" id="regen-quality-chips">
+                  <div class="chip chip-sm" data-value="720p" onclick="selectRegenQuality(this)">720p</div>
+                  <div class="chip chip-sm selected" data-value="1080p" onclick="selectRegenQuality(this)">1080p</div>
+                </div>
+              </div>
+              <div class="regen-setting-row">
+                <span class="regen-label">Music</span>
+                <div class="chip-group chip-group-sm" id="regen-music-chips">
+                  <div class="chip chip-sm selected" data-value="none" onclick="selectRegenMusic(this)">None</div>
+                  <div class="chip chip-sm" data-value="auto" onclick="selectRegenMusic(this)">Auto 🎵</div>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;gap:8px;margin-bottom:12px">
               <button class="btn btn-secondary" id="btn-regen-video" onclick="regenerateVideoOnly()" style="flex:1;padding:10px;font-size:0.85rem">
                 🎬 Regenerate Video Only
