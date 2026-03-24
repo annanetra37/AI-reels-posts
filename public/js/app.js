@@ -746,11 +746,26 @@ async function publishPost() {
       const posted = [];
       if (result.instagramId) posted.push('Instagram');
       if (result.facebookId) posted.push('Facebook');
-      showStatus(`Successfully posted to ${posted.join(' & ')}!`);
-      document.getElementById('status-spinner').style.display = 'none';
-      setTimeout(() => hideStatus(), 3000);
-      btn.innerHTML = '✅ Posted!';
+      const failed = [];
+      if (toInstagram && !result.instagramId) failed.push('Instagram');
+      if (toFacebook && !result.facebookId) failed.push('Facebook');
+
+      if (failed.length > 0 && posted.length > 0) {
+        showStatus(`Posted to ${posted.join(' & ')}, but failed on ${failed.join(' & ')}: ${(result.errors || []).join('; ')}`, true);
+      } else if (posted.length > 0) {
+        showStatus(`Successfully posted to ${posted.join(' & ')}!`);
+        document.getElementById('status-spinner').style.display = 'none';
+        setTimeout(() => hideStatus(), 3000);
+      }
+
+      // Refresh post data and update button state
       fetchPostHistory();
+      // Update local post state to reflect new platform status
+      if (state.generatedPost?.post) {
+        if (result.postedToIg) state.generatedPost.post.posted_to_ig = true;
+        if (result.postedToFb) state.generatedPost.post.posted_to_fb = true;
+      }
+      updatePublishButton();
     } else {
       throw new Error(result.error || 'Publishing failed');
     }
@@ -758,6 +773,50 @@ async function publishPost() {
     showStatus('Publishing failed: ' + err.message, true);
     btn.disabled = false;
     btn.innerHTML = '📱 Publish';
+  }
+}
+
+// ===== Publish Button State =====
+function updatePublishButton() {
+  const btn = document.getElementById('btn-publish');
+  const post = state.generatedPost?.post;
+  if (!post) return;
+
+  const igPosted = !!post.posted_to_ig;
+  const fbPosted = !!post.posted_to_fb;
+  const igCheckbox = document.getElementById('publish-instagram');
+  const fbCheckbox = document.getElementById('publish-facebook');
+
+  if (igPosted && fbPosted) {
+    // Both platforms done
+    btn.disabled = true;
+    btn.innerHTML = '✅ Posted to Both';
+    igCheckbox.disabled = true;
+    fbCheckbox.disabled = true;
+  } else if (igPosted || fbPosted) {
+    // Partial — allow reposting to the other platform
+    const postedPlatforms = [];
+    if (igPosted) postedPlatforms.push('IG');
+    if (fbPosted) postedPlatforms.push('FB');
+
+    // Disable already-posted checkboxes, enable remaining
+    igCheckbox.checked = !igPosted;
+    igCheckbox.disabled = igPosted;
+    fbCheckbox.checked = !fbPosted;
+    fbCheckbox.disabled = fbPosted;
+
+    btn.disabled = false;
+    btn.innerHTML = `🔄 Repost (${postedPlatforms.join('+')} done)`;
+  } else if (post.status === 'failed') {
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Retry Publish';
+    igCheckbox.disabled = false;
+    fbCheckbox.disabled = false;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '📱 Publish';
+    igCheckbox.disabled = false;
+    fbCheckbox.disabled = false;
   }
 }
 
@@ -852,8 +911,13 @@ function renderPostHistory(posts) {
     </thead>
     <tbody>
       ${posts.map(p => {
-        const statusClass = p.status === 'posted' ? 'posted' : p.status === 'failed' ? 'failed' : 'draft';
+        const statusClass = p.status === 'posted' ? 'posted' : p.status === 'partial' ? 'partial' : p.status === 'failed' ? 'failed' : 'draft';
         const date = new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        // Per-platform indicators
+        const platforms = [];
+        if (p.posted_to_ig) platforms.push('IG');
+        if (p.posted_to_fb) platforms.push('FB');
+        const platformLabel = platforms.length ? ` (${platforms.join('+')})` : '';
         // Resolve SME names from loaded businesses
         const smeNames = (p.business_ids || [])
           .map(id => state.businesses.find(b => b.id == id))
@@ -876,7 +940,7 @@ function renderPostHistory(posts) {
           <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${smeNames}</td>
           <td>${p.post_type}</td>
           <td>${p.post_style}</td>
-          <td><span class="status-badge ${statusClass}">${p.status}</span></td>
+          <td><span class="status-badge ${statusClass}">${p.status}${platformLabel}</span></td>
           <td>${date}</td>
           <td style="color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
         </tr>`;
@@ -1153,15 +1217,7 @@ async function loadPostFromHistory(postId) {
 
   renderPreview();
 
-  // Update publish button based on status
-  const btn = document.getElementById('btn-publish');
-  if (post.status === 'posted') {
-    btn.disabled = true;
-    btn.innerHTML = '✅ Already Posted';
-  } else {
-    btn.disabled = false;
-    btn.innerHTML = '📱 Post to Instagram';
-  }
+  updatePublishButton();
 
   // Scroll to top of preview
   document.getElementById('step-4').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1482,6 +1538,101 @@ async function deleteMusicTrack(id) {
     alert('Delete failed: ' + err.message);
   }
 }
+
+// ===== Freesound Integration =====
+let freesoundPage = 1;
+
+function toggleFreesoundSearch() {
+  const panel = document.getElementById('freesound-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function searchFreesound(page) {
+  const query = document.getElementById('freesound-query').value.trim();
+  if (!query) return;
+  freesoundPage = page || 1;
+
+  const resultsDiv = document.getElementById('freesound-results');
+  resultsDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 0.8rem;">Searching...</p>';
+
+  try {
+    const res = await fetch(`/api/music/freesound/search?q=${encodeURIComponent(query)}&page=${freesoundPage}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (!data.tracks?.length) {
+      resultsDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 0.8rem;">No results found. Try different keywords.</p>';
+      return;
+    }
+
+    resultsDiv.innerHTML = data.tracks.map(t => `
+      <div class="music-track-item" data-track-id="${t.id}" onclick="selectFreesoundTrack(this, ${JSON.stringify(JSON.stringify(t))})">
+        <button class="music-play-btn" onclick="event.stopPropagation(); previewFreesoundTrack(${JSON.stringify(JSON.stringify(t))})" title="Play preview">&#9654;</button>
+        <div class="music-track-info">
+          <span class="music-track-name">${escapeHtml(t.name)}</span>
+          <div class="music-track-meta">
+            <span class="tag">by ${escapeHtml(t.artist)}</span>
+            ${t.rating ? `<span class="tag">${'★'.repeat(Math.round(t.rating))}</span>` : ''}
+          </div>
+        </div>
+        <span class="music-track-duration">${formatDuration(t.duration_seconds)}</span>
+      </div>
+    `).join('');
+
+    // Pagination
+    const pagDiv = document.getElementById('freesound-pagination');
+    pagDiv.innerHTML = '';
+    if (freesoundPage > 1) {
+      pagDiv.innerHTML += `<button class="btn btn-secondary" onclick="searchFreesound(${freesoundPage - 1})" style="padding: 3px 10px; font-size: 0.75rem;">&larr; Prev</button>`;
+    }
+    pagDiv.innerHTML += `<span style="font-size: 0.75rem; color: var(--text-muted); align-self: center;">Page ${freesoundPage} (${data.count} results)</span>`;
+    if (data.next) {
+      pagDiv.innerHTML += `<button class="btn btn-secondary" onclick="searchFreesound(${freesoundPage + 1})" style="padding: 3px 10px; font-size: 0.75rem;">Next &rarr;</button>`;
+    }
+  } catch (err) {
+    resultsDiv.innerHTML = `<p style="color: var(--danger); font-size: 0.8rem;">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function selectFreesoundTrack(el, trackJson) {
+  const track = JSON.parse(trackJson);
+  state.selectedTrack = track;
+  // Deselect in main list
+  document.querySelectorAll('.music-track-item').forEach(item => item.classList.remove('selected'));
+  el.classList.add('selected');
+  previewFreesoundTrack(trackJson);
+  applyKenBurns();
+}
+
+function previewFreesoundTrack(trackJson) {
+  const track = JSON.parse(trackJson);
+  const player = document.getElementById('music-preview-player');
+  if (!player || !track.url) return;
+
+  if (player.dataset.trackId === track.id && !player.paused) {
+    player.pause();
+    updateNowPlaying(false);
+    return;
+  }
+
+  player.src = track.url;
+  player.dataset.trackId = track.id;
+  player.play().catch(() => {});
+
+  const npBar = document.getElementById('music-now-playing');
+  const npName = document.getElementById('music-np-name');
+  if (npBar) npBar.style.display = 'flex';
+  if (npName) npName.textContent = track.name;
+  updateNowPlaying(true);
+
+  player.onended = () => updateNowPlaying(false);
+}
+
+// Allow Enter key in Freesound search
+document.addEventListener('DOMContentLoaded', () => {
+  const fsInput = document.getElementById('freesound-query');
+  if (fsInput) fsInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchFreesound(); });
+});
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60);

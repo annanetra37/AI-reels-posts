@@ -9,6 +9,35 @@ const FB_PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const GRAPH_URL = 'https://graph.facebook.com/v19.0';
 
+// Cache the Page Access Token (derived from user token)
+let cachedPageToken = null;
+
+/**
+ * Get a Page Access Token from the User Access Token.
+ * The /{page-id}/videos endpoint requires a Page token, not a User token.
+ * If the token is already a page token, this still works fine.
+ */
+async function getPageAccessToken() {
+  if (cachedPageToken) return cachedPageToken;
+  try {
+    const res = await fetch(
+      `${GRAPH_URL}/${FB_PAGE_ID}?fields=access_token&access_token=${ACCESS_TOKEN}`
+    );
+    const data = await res.json();
+    if (data.access_token) {
+      cachedPageToken = data.access_token;
+      console.log('[META] Obtained Page Access Token successfully');
+      return cachedPageToken;
+    }
+    // If we can't get a page token, fall back to the user token
+    console.warn('[META] Could not obtain Page Access Token, using user token');
+    return ACCESS_TOKEN;
+  } catch (err) {
+    console.warn('[META] Page token exchange failed:', err.message);
+    return ACCESS_TOKEN;
+  }
+}
+
 async function publishToInstagram({ postType, caption, mediaUrls }) {
   if (!IG_ACCOUNT_ID || !ACCESS_TOKEN) {
     throw new Error('Meta API credentials not configured. Set INSTAGRAM_BUSINESS_ACCOUNT_ID and META_ACCESS_TOKEN.');
@@ -119,6 +148,21 @@ async function publishCarousel({ caption, mediaUrls }) {
 
 // ===== Facebook Page Publishing =====
 
+/**
+ * Make a Graph API call using the Page Access Token (required for FB page publishing).
+ */
+async function pageGraphFetch(path, body) {
+  const pageToken = await getPageAccessToken();
+  const res = await fetch(`${GRAPH_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: pageToken, ...body }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(`Facebook error: ${data.error.message} (code: ${data.error.code})`);
+  return data;
+}
+
 async function publishToFacebook({ postType, caption, mediaUrls }) {
   if (!FB_PAGE_ID || !ACCESS_TOKEN) {
     throw new Error('Facebook credentials not configured. Set FACEBOOK_PAGE_ID and META_ACCESS_TOKEN.');
@@ -142,7 +186,7 @@ async function publishToFacebook({ postType, caption, mediaUrls }) {
 }
 
 async function fbPublishPhoto({ caption, imageUrl }) {
-  return graphFetch(`/${FB_PAGE_ID}/photos`, {
+  return pageGraphFetch(`/${FB_PAGE_ID}/photos`, {
     url: imageUrl,
     message: caption,
     published: true,
@@ -153,7 +197,7 @@ async function fbPublishMultiPhoto({ caption, imageUrls }) {
   // Step 1: Upload each photo as unpublished
   const photoIds = [];
   for (const url of imageUrls) {
-    const photo = await graphFetch(`/${FB_PAGE_ID}/photos`, {
+    const photo = await pageGraphFetch(`/${FB_PAGE_ID}/photos`, {
       url,
       published: false,
     });
@@ -161,28 +205,56 @@ async function fbPublishMultiPhoto({ caption, imageUrls }) {
   }
 
   // Step 2: Create a feed post attaching all photos
-  const attachments = {};
-  photoIds.forEach((id, i) => {
-    attachments[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
-  });
-
-  // graphFetch sends JSON body, but multi-photo needs form-style params
-  // Use the feed endpoint with attached_media
   const body = { message: caption };
   photoIds.forEach((id, i) => {
     body[`attached_media[${i}]`] = `{"media_fbid":"${id}"}`;
   });
 
-  return graphFetch(`/${FB_PAGE_ID}/feed`, body);
+  return pageGraphFetch(`/${FB_PAGE_ID}/feed`, body);
 }
 
 async function fbPublishVideo({ caption, videoUrl }) {
-  // Upload video to Facebook page
-  const result = await graphFetch(`/${FB_PAGE_ID}/videos`, {
-    file_url: videoUrl,
-    description: caption,
-  });
-  return result;
+  // Try the modern Reels API first, then fall back to legacy /videos endpoint.
+  // The Reels API requires pages_manage_posts + pages_read_engagement,
+  // while /videos may require the deprecated publish_video permission.
+  try {
+    console.log('[META] Trying Facebook Reels API for video upload...');
+    // Step 1: Initialize upload
+    const init = await pageGraphFetch(`/${FB_PAGE_ID}/video_reels`, {
+      upload_phase: 'start',
+    });
+
+    // Step 2: Upload the video via URL
+    const pageToken = await getPageAccessToken();
+    const uploadRes = await fetch(`${GRAPH_URL}/${init.video_id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: pageToken,
+        upload_phase: 'transfer',
+        file_url: videoUrl,
+      }),
+    });
+    const uploadData = await uploadRes.json();
+    if (uploadData.error) throw new Error(uploadData.error.message);
+
+    // Step 3: Publish
+    const result = await pageGraphFetch(`/${FB_PAGE_ID}/video_reels`, {
+      upload_phase: 'finish',
+      video_id: init.video_id,
+      description: caption,
+    });
+    console.log('[META] Facebook Reels API publish succeeded');
+    return { id: init.video_id, ...result };
+  } catch (reelErr) {
+    console.warn('[META] Facebook Reels API failed, trying legacy /videos:', reelErr.message);
+    // Fallback to legacy /videos endpoint
+    const result = await pageGraphFetch(`/${FB_PAGE_ID}/videos`, {
+      file_url: videoUrl,
+      description: caption,
+    });
+    return result;
+  }
 }
 
 module.exports = { publishToInstagram, publishToFacebook };

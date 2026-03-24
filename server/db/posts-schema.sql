@@ -11,9 +11,11 @@ CREATE TABLE IF NOT EXISTS generated_posts (
   luma_prompt TEXT,                      -- prompt sent to LumaLabs (if reel/carousel)
   luma_result_url TEXT,                  -- result from LumaLabs
   media_urls TEXT[],                     -- final media URLs used in post
-  status VARCHAR(30) DEFAULT 'draft',   -- draft, generated, posted, failed
+  status VARCHAR(30) DEFAULT 'draft',   -- draft, generated, posted, partial, failed
   meta_post_id VARCHAR(100),            -- ID returned by Meta Graph API (Instagram)
   fb_post_id VARCHAR(100),              -- ID returned by Facebook Page API
+  posted_to_ig BOOLEAN DEFAULT FALSE,   -- per-platform tracking
+  posted_to_fb BOOLEAN DEFAULT FALSE,   -- per-platform tracking
   posted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
