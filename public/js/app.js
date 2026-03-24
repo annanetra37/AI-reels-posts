@@ -15,6 +15,7 @@ const state = {
   activeLang: null,     // currently viewed language in preview
   selectedTrack: null,  // { id, name, url } or null for no music
   musicTracks: [],      // cached music library
+  uploadedVideoFile: null,  // File object for user-uploaded video
 };
 
 // ===== Init =====
@@ -343,6 +344,12 @@ function selectVideoModel(el) {
   document.querySelectorAll('#video-model-chips .chip').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
   state.videoModel = el.dataset.value;
+
+  // Show/hide video upload area
+  const uploadArea = document.getElementById('video-upload-area');
+  if (uploadArea) {
+    uploadArea.style.display = state.videoModel === 'upload' ? 'block' : 'none';
+  }
 }
 
 function selectVideoQuality(el) {
@@ -432,6 +439,12 @@ function goToStep(step) {
 
 // ===== Generation (SSE) =====
 async function generatePost() {
+  // Validate: if "Upload My Video" selected, must have a file
+  if (state.videoModel === 'upload' && !state.uploadedVideoFile) {
+    showStatus('Please upload a video file first', true);
+    return;
+  }
+
   const btn = document.getElementById('btn-generate');
   btn.disabled = true;
   btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Generating...';
@@ -441,6 +454,26 @@ async function generatePost() {
 
   try {
     const customDesc = document.getElementById('custom-description')?.value?.trim() || '';
+
+    // If user chose to upload their own video, upload it first
+    let uploadedVideoUrl = null;
+    if (state.videoModel === 'upload' && state.uploadedVideoFile) {
+      showStatus('Uploading your video...');
+      addLog('info', `Uploading video: ${state.uploadedVideoFile.name} (${(state.uploadedVideoFile.size / 1024 / 1024).toFixed(1)} MB)`);
+
+      const formData = new FormData();
+      formData.append('video', state.uploadedVideoFile);
+
+      const uploadRes = await fetch('/api/posts/upload-video', {
+        method: 'POST',
+        body: formData,
+      });
+      const uploadResult = await uploadRes.json();
+      if (uploadResult.error) throw new Error(uploadResult.error);
+      uploadedVideoUrl = uploadResult.url;
+      addLog('success', `Video uploaded: ${uploadedVideoUrl}`);
+    }
+
     const body = {
       businessIds: [...state.selectedSMEs],
       postType: state.postType,
@@ -451,6 +484,7 @@ async function generatePost() {
       selectedPhotos: state.selectedPhotos,
       music: state.music,
       ...(customDesc ? { customDescription: customDesc } : {}),
+      ...(uploadedVideoUrl ? { uploadedVideoUrl } : {}),
     };
 
     const response = await fetch('/api/posts/generate', {
@@ -1142,6 +1176,69 @@ async function loadPostFromHistory(postId) {
     }
   }
 }
+
+// ===== Video Upload =====
+
+function handleVideoFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  setUploadedVideo(file);
+}
+
+function setUploadedVideo(file) {
+  state.uploadedVideoFile = file;
+  const dropZone = document.getElementById('video-drop-zone');
+  const dropContent = document.getElementById('video-drop-content');
+  const previewArea = document.getElementById('video-upload-preview');
+  const videoEl = document.getElementById('uploaded-video-preview');
+  const nameEl = document.getElementById('uploaded-video-name');
+
+  dropContent.style.display = 'none';
+  previewArea.style.display = 'block';
+  dropZone.classList.add('has-file');
+
+  videoEl.src = URL.createObjectURL(file);
+  nameEl.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+}
+
+function clearUploadedVideo() {
+  state.uploadedVideoFile = null;
+  const dropZone = document.getElementById('video-drop-zone');
+  const dropContent = document.getElementById('video-drop-content');
+  const previewArea = document.getElementById('video-upload-preview');
+  const videoEl = document.getElementById('uploaded-video-preview');
+  const fileInput = document.getElementById('video-file-input');
+
+  dropContent.style.display = 'block';
+  previewArea.style.display = 'none';
+  dropZone.classList.remove('has-file');
+
+  if (videoEl.src) URL.revokeObjectURL(videoEl.src);
+  videoEl.src = '';
+  fileInput.value = '';
+}
+
+// Drag & drop support
+document.addEventListener('DOMContentLoaded', () => {
+  const dropZone = document.getElementById('video-drop-zone');
+  if (!dropZone) return;
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('video/')) {
+      setUploadedVideo(file);
+    }
+  });
+});
 
 // ===== Music Library =====
 
