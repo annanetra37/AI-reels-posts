@@ -224,6 +224,83 @@ async function publishToFacebook({ postType, caption, mediaUrls }) {
   return fbPublishMultiPhoto({ caption, imageUrls: mediaUrls });
 }
 
+/**
+ * Upload a video to a Facebook Page using the resumable upload protocol.
+ * Returns the video ID. Works for both published and unpublished uploads.
+ * @param {string} videoUrl - URL of the video file
+ * @param {object} [extraParams] - Additional params (description, published, etc.)
+ * @returns {Promise<{id: string}>}
+ */
+async function fbUploadVideo(videoUrl, extraParams = {}) {
+  const pageToken = await getPageAccessToken();
+
+  // Phase 1: Start — get an upload session
+  const startRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      access_token: pageToken,
+      upload_phase: 'start',
+      file_url: videoUrl,
+      ...extraParams,
+    }),
+  });
+  const startData = await startRes.json();
+
+  // Some API versions accept file_url on start and process everything at once
+  if (startData.id && !startData.upload_session_id) {
+    return startData; // Video uploaded in one shot
+  }
+  if (startData.error) {
+    // If start with file_url fails, try the simple single-request approach
+    console.warn('[META] Resumable start failed, trying single-request upload...');
+    const simpleRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: pageToken,
+        file_url: videoUrl,
+        upload_phase: 'transfer',
+        ...extraParams,
+      }),
+    });
+    const simpleData = await simpleRes.json();
+    if (simpleData.error) throw new Error(`Facebook video upload: ${simpleData.error.message}`);
+    return simpleData;
+  }
+
+  // Phase 2: Transfer — send the video
+  const sessionId = startData.upload_session_id;
+  const transferRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      access_token: pageToken,
+      upload_phase: 'transfer',
+      upload_session_id: sessionId,
+      file_url: videoUrl,
+    }),
+  });
+  const transferData = await transferRes.json();
+  if (transferData.error) throw new Error(`Facebook video transfer: ${transferData.error.message}`);
+
+  // Phase 3: Finish
+  const finishRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      access_token: pageToken,
+      upload_phase: 'finish',
+      upload_session_id: sessionId,
+      ...extraParams,
+    }),
+  });
+  const finishData = await finishRes.json();
+  if (finishData.error) throw new Error(`Facebook video finish: ${finishData.error.message}`);
+
+  return finishData;
+}
+
 async function fbPublishPhotoStory({ caption, imageUrl }) {
   // Facebook Page photo stories: POST /{page-id}/photo_stories
   return pageGraphFetch(`/${FB_PAGE_ID}/photo_stories`, {
@@ -236,12 +313,8 @@ async function fbPublishPhotoStory({ caption, imageUrl }) {
 
 async function fbPublishVideoStory({ caption, videoUrl }) {
   // Facebook Page video stories: POST /{page-id}/video_stories
-  // Step 1: Upload video (unpublished)
-  const video = await pageGraphFetch(`/${FB_PAGE_ID}/videos`, {
-    file_url: videoUrl,
-    description: caption,
-    published: false,
-  });
+  // Step 1: Upload video (unpublished) via resumable protocol
+  const video = await fbUploadVideo(videoUrl, { description: caption, published: false });
 
   // Step 2: Create story
   return pageGraphFetch(`/${FB_PAGE_ID}/video_stories`, {
@@ -278,9 +351,7 @@ async function fbPublishMultiPhoto({ caption, imageUrls }) {
 }
 
 async function fbPublishVideo({ caption, videoUrl }) {
-  // Try the modern Reels API first, then fall back to legacy /videos endpoint.
-  // The Reels API requires pages_manage_posts + pages_read_engagement,
-  // while /videos may require the deprecated publish_video permission.
+  // Try the modern Reels API first, then fall back to resumable /videos upload.
   try {
     console.log('[META] Trying Facebook Reels API for video upload...');
     // Step 1: Initialize upload
@@ -311,13 +382,9 @@ async function fbPublishVideo({ caption, videoUrl }) {
     console.log('[META] Facebook Reels API publish succeeded');
     return { id: init.video_id, ...result };
   } catch (reelErr) {
-    console.warn('[META] Facebook Reels API failed, trying legacy /videos:', reelErr.message);
-    // Fallback to legacy /videos endpoint
-    const result = await pageGraphFetch(`/${FB_PAGE_ID}/videos`, {
-      file_url: videoUrl,
-      description: caption,
-    });
-    return result;
+    console.warn('[META] Facebook Reels API failed, trying resumable /videos:', reelErr.message);
+    // Fallback: use proper resumable video upload protocol
+    return fbUploadVideo(videoUrl, { description: caption });
   }
 }
 

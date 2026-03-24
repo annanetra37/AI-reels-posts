@@ -119,7 +119,6 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
   const id = Date.now();
   const imgPath = path.join(TMP_DIR, `img2vid_img_${id}.jpg`);
   const audioPath = path.join(TMP_DIR, `img2vid_audio_${id}.mp3`);
-  const scaledPath = path.join(TMP_DIR, `img2vid_scaled_${id}.jpg`);
   const outputPath = path.join(TMP_DIR, `img2vid_output_${id}.mp4`);
 
   try {
@@ -132,24 +131,54 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
     const fps = 30;
     const totalFrames = duration * fps;
 
-    // Step 1: Scale the source image to fill the target size (cover), center-crop to exact dimensions
-    // This ensures the image fills the entire frame regardless of its original aspect ratio
-    execSync(
-      `ffmpeg -y -i "${imgPath}" -vf "scale=${Math.round(w * 1.15)}:${Math.round(h * 1.15)}:force_original_aspect_ratio=increase,crop=${Math.round(w * 1.15)}:${Math.round(h * 1.15)}" "${scaledPath}"`,
-      { timeout: 30000 }
-    );
+    // Butter-smooth Ken Burns using high-resolution crop+scale pipeline.
+    // Why NOT zoompan: it operates on integer pixels → visible stutter.
+    //
+    // Our approach:
+    //   1. Scale source image to 3x target size (e.g. 3240x3240 for 1080x1080)
+    //   2. Use crop filter with floating-point expressions for position + size
+    //   3. Scale crop result down to target — this gives sub-pixel interpolation
+    //   4. Use -sws_flags lanczos for high-quality downscale
+    //
+    // The crop window starts large (covering ~93% of the 3x image) and slowly
+    // shrinks to ~82%, creating a gentle 12% zoom-in over the full duration.
+    // The crop center drifts slightly for natural parallax motion.
 
-    // Step 2: Create video with smooth Ken Burns zoom effect
-    // Zoom from 1.0 to 1.12 over the full duration for a gentle, cinematic effect
-    // Use higher fps (30) for smoothness, and linear zoom interpolation
-    const zoomStart = 1.0;
-    const zoomEnd = 1.12;
-    const zoomIncrement = ((zoomEnd - zoomStart) / totalFrames).toFixed(8);
+    const scale = 3; // supersampling factor
+    const sw = w * scale; // 3240 for 1080
+    const sh = h * scale; // 3240 for 1080
+
+    // Crop window dimensions (in 3x space) — start big, end smaller
+    const cropStartW = Math.round(sw * 0.93);
+    const cropEndW = Math.round(sw * 0.82);
+    const cropStartH = Math.round(sh * 0.93);
+    const cropEndH = Math.round(sh * 0.82);
+
+    // Express crop size as linear interpolation: start + (end-start) * t
+    // where t = n / totalFrames (n is frame number)
+    const cwExpr = `${cropStartW}+(${cropEndW - cropStartW})*n/${totalFrames}`;
+    const chExpr = `${cropStartH}+(${cropEndH - cropStartH})*n/${totalFrames}`;
+
+    // Center crop with a slight drift (adds natural parallax)
+    // Drift from center-left to center-right over duration
+    const driftPixels = Math.round(sw * 0.02); // 2% drift
+    const cxExpr = `(iw-${cropStartW}+(${cropStartW - cropEndW})*n/${totalFrames})/2+${driftPixels}*(n/${totalFrames}-0.5)`;
+    const cyExpr = `(ih-${cropStartH}+(${cropStartH - cropEndH})*n/${totalFrames})/2`;
+
+    const filterComplex =
+      `[0:v]scale=${sw}:${sh}:force_original_aspect_ratio=increase,` +
+      `crop=${sw}:${sh},` +
+      `crop='${cwExpr}':'${chExpr}':'${cxExpr}':'${cyExpr}',` +
+      `scale=${w}:${h}:flags=lanczos[v]`;
+
     execSync(
-      `ffmpeg -y -loop 1 -i "${scaledPath}" -i "${audioPath}" ` +
-      `-filter_complex "[0:v]zoompan=z='${zoomStart}+on*${zoomIncrement}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${w}x${h}:fps=${fps}[v]" ` +
-      `-map "[v]" -map 1:a:0 -c:v libx264 -preset fast -pix_fmt yuv420p -c:a aac -b:a 192k -t ${duration} -shortest "${outputPath}"`,
-      { timeout: 120000 }
+      `ffmpeg -y -loop 1 -i "${imgPath}" -i "${audioPath}" ` +
+      `-filter_complex "${filterComplex}" ` +
+      `-map "[v]" -map 1:a:0 ` +
+      `-c:v libx264 -preset medium -crf 18 -r ${fps} -pix_fmt yuv420p ` +
+      `-c:a aac -b:a 192k ` +
+      `-t ${duration} -shortest "${outputPath}"`,
+      { timeout: 180000 }
     );
 
     const result = await new Promise((resolve, reject) => {
@@ -161,7 +190,7 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
 
     return result.secure_url;
   } finally {
-    cleanup(imgPath, audioPath, scaledPath, outputPath);
+    cleanup(imgPath, audioPath, outputPath);
   }
 }
 
