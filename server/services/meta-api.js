@@ -47,11 +47,21 @@ async function publishToInstagram({ postType, caption, mediaUrls }) {
     throw new Error('No media URLs provided for publishing.');
   }
 
-  if (postType === 'image') {
-    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: false });
-  } else if (postType === 'story') {
-    // Stories always publish as a single image (collage if multi-photo)
+  // Detect if media is actually a video (e.g. image+music → video)
+  const isVideo = mediaUrls[0].match(/\.(mp4|mov|avi|webm)/i);
+
+  if (postType === 'story') {
+    if (isVideo) {
+      // Video story: use STORIES media_type with video_url
+      return publishVideoStory({ caption, videoUrl: mediaUrls[0] });
+    }
     return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: true });
+  } else if (postType === 'image') {
+    if (isVideo) {
+      // Image was converted to video (music added) — publish as reel
+      return publishReel({ caption, videoUrl: mediaUrls[0] });
+    }
+    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: false });
   } else if (postType === 'reel') {
     return publishReel({ caption, videoUrl: mediaUrls[0] });
   } else if (postType === 'carousel') {
@@ -95,6 +105,24 @@ async function publishSingleImage({ caption, imageUrl, isStory }) {
   });
 
   // Step 2: Publish
+  const result = await graphFetch(`/${IG_ACCOUNT_ID}/media_publish`, {
+    creation_id: container.id,
+  });
+  return result;
+}
+
+async function publishVideoStory({ caption, videoUrl }) {
+  // Step 1: Create video story container
+  const container = await graphFetch(`/${IG_ACCOUNT_ID}/media`, {
+    video_url: videoUrl,
+    caption,
+    media_type: 'STORIES',
+  });
+
+  // Step 2: Wait for processing
+  await waitForContainer(container.id);
+
+  // Step 3: Publish
   const result = await graphFetch(`/${IG_ACCOUNT_ID}/media_publish`, {
     creation_id: container.id,
   });
@@ -172,17 +200,53 @@ async function publishToFacebook({ postType, caption, mediaUrls }) {
     throw new Error('No media URLs provided for Facebook publishing.');
   }
 
-  if (postType === 'reel') {
+  // Detect if media is actually a video
+  const isVideo = mediaUrls[0].match(/\.(mp4|mov|avi|webm)/i);
+
+  if (postType === 'story') {
+    // Facebook Page Stories API
+    if (isVideo) {
+      return fbPublishVideoStory({ caption, videoUrl: mediaUrls[0] });
+    }
+    return fbPublishPhotoStory({ caption, imageUrl: mediaUrls[0] });
+  }
+
+  if (postType === 'reel' || (isVideo && postType !== 'story')) {
     return fbPublishVideo({ caption, videoUrl: mediaUrls[0] });
   }
 
-  // For image, story, carousel — post photos to the page
+  // For image, carousel — post photos to the page
   if (mediaUrls.length === 1) {
     return fbPublishPhoto({ caption, imageUrl: mediaUrls[0] });
   }
 
-  // Multiple images — upload each as unpublished, then create a multi-photo post
+  // Multiple images
   return fbPublishMultiPhoto({ caption, imageUrls: mediaUrls });
+}
+
+async function fbPublishPhotoStory({ caption, imageUrl }) {
+  // Facebook Page photo stories: POST /{page-id}/photo_stories
+  return pageGraphFetch(`/${FB_PAGE_ID}/photo_stories`, {
+    photo_id: (await pageGraphFetch(`/${FB_PAGE_ID}/photos`, {
+      url: imageUrl,
+      published: false,
+    })).id,
+  });
+}
+
+async function fbPublishVideoStory({ caption, videoUrl }) {
+  // Facebook Page video stories: POST /{page-id}/video_stories
+  // Step 1: Upload video (unpublished)
+  const video = await pageGraphFetch(`/${FB_PAGE_ID}/videos`, {
+    file_url: videoUrl,
+    description: caption,
+    published: false,
+  });
+
+  // Step 2: Create story
+  return pageGraphFetch(`/${FB_PAGE_ID}/video_stories`, {
+    video_id: video.id,
+  });
 }
 
 async function fbPublishPhoto({ caption, imageUrl }) {

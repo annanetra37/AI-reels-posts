@@ -1000,7 +1000,7 @@ function renderPostHistory(posts) {
           <td>${p.post_type}</td>
           <td>${p.post_style}</td>
           <td>
-            <select class="status-select ${statusClass}" onchange="event.stopPropagation(); changePostStatus(${p.id}, this.value)" title="Click to change status">
+            <select class="status-select ${statusClass}" onclick="event.stopPropagation()" onchange="event.stopPropagation(); changePostStatus(${p.id}, this.value)" title="Click to change status">
               ${['draft', 'generated', 'posted', 'partial', 'failed'].map(s =>
                 `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s}${s === p.status ? platformLabel : ''}</option>`
               ).join('')}
@@ -1631,9 +1631,13 @@ async function searchFreesound(page) {
       return;
     }
 
+    // Store tracks in a global lookup for onclick handlers
+    window._freesoundTracks = {};
+    data.tracks.forEach(t => { window._freesoundTracks[t.id] = t; });
+
     resultsDiv.innerHTML = data.tracks.map(t => `
-      <div class="music-track-item" data-track-id="${t.id}" onclick="selectFreesoundTrack(this, ${JSON.stringify(JSON.stringify(t))})">
-        <button class="music-play-btn" onclick="event.stopPropagation(); previewFreesoundTrack(${JSON.stringify(JSON.stringify(t))})" title="Play preview">&#9654;</button>
+      <div class="music-track-item" data-track-id="${t.id}" onclick="selectFreesoundTrack(this, '${t.id}')">
+        <button class="music-play-btn" onclick="event.stopPropagation(); previewFreesoundTrack('${t.id}')" title="Play preview">&#9654;</button>
         <div class="music-track-info">
           <span class="music-track-name">${escapeHtml(t.name)}</span>
           <div class="music-track-meta">
@@ -1660,18 +1664,20 @@ async function searchFreesound(page) {
   }
 }
 
-function selectFreesoundTrack(el, trackJson) {
-  const track = JSON.parse(trackJson);
+function selectFreesoundTrack(el, trackId) {
+  const track = window._freesoundTracks?.[trackId];
+  if (!track) return;
   state.selectedTrack = track;
   // Deselect in main list
   document.querySelectorAll('.music-track-item').forEach(item => item.classList.remove('selected'));
   el.classList.add('selected');
-  previewFreesoundTrack(trackJson);
+  previewFreesoundTrack(trackId);
   applyKenBurns();
 }
 
-function previewFreesoundTrack(trackJson) {
-  const track = JSON.parse(trackJson);
+function previewFreesoundTrack(trackId) {
+  const track = window._freesoundTracks?.[trackId];
+  if (!track) return;
   const player = document.getElementById('music-preview-player');
   if (!player || !track.url) return;
 
