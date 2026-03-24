@@ -94,11 +94,10 @@ function toggleSME(id) {
 
 function updateSMECount() {
   const badge = document.getElementById('sme-count');
-  const btn = document.getElementById('btn-step1-next');
   const count = state.selectedSMEs.size;
   badge.textContent = count;
   badge.style.display = count > 0 ? 'inline' : 'none';
-  btn.disabled = count === 0;
+  document.querySelectorAll('.btn-step1-next').forEach(btn => btn.disabled = count === 0);
 }
 
 // ===== Photo Gallery =====

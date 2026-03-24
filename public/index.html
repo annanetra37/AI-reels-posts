@@ -36,13 +36,16 @@
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
         <h2 class="section-title" style="margin-bottom:0">Select Businesses <span id="sme-count" class="count-badge" style="display:none">0</span></h2>
         <button class="btn btn-secondary" style="padding:8px 14px;font-size:0.85rem" onclick="openAddSME()">+ Add New</button>
+        <button class="btn btn-primary btn-step1-next" onclick="goToStep(2)" disabled style="margin-left:auto;padding:8px 18px;font-size:0.85rem">
+          Next: Choose Photos &rarr;
+        </button>
       </div>
       <input type="text" class="search-bar" id="sme-search" placeholder="Search businesses by name, category, or tags..." style="margin-bottom:16px">
       <div class="card-grid" id="sme-grid">
         <!-- Populated by JS -->
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="btn-step1-next" onclick="goToStep(2)" disabled>
+        <button class="btn btn-primary btn-step1-next" onclick="goToStep(2)" disabled>
           Next: Choose Photos &rarr;
         </button>
       </div>
