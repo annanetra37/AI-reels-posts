@@ -119,6 +119,7 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
   const id = Date.now();
   const imgPath = path.join(TMP_DIR, `img2vid_img_${id}.jpg`);
   const audioPath = path.join(TMP_DIR, `img2vid_audio_${id}.mp3`);
+  const scaledPath = path.join(TMP_DIR, `img2vid_scaled_${id}.jpg`);
   const outputPath = path.join(TMP_DIR, `img2vid_output_${id}.mp4`);
 
   try {
@@ -127,10 +128,27 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
       downloadToFile(audioUrl, audioPath),
     ]);
 
-    // Create video: static image + audio, with a slow zoom effect for visual interest
     const [w, h] = size.split('x').map(Number);
+    const fps = 30;
+    const totalFrames = duration * fps;
+
+    // Step 1: Scale the source image to fill the target size (cover), center-crop to exact dimensions
+    // This ensures the image fills the entire frame regardless of its original aspect ratio
     execSync(
-      `ffmpeg -y -loop 1 -i "${imgPath}" -i "${audioPath}" -filter_complex "[0:v]scale=${w * 1.1}:${h * 1.1},zoompan=z='min(zoom+0.0005,1.1)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${duration * 25}:s=${w}x${h}:fps=25[v]" -map "[v]" -map 1:a:0 -c:v libx264 -preset fast -pix_fmt yuv420p -c:a aac -t ${duration} -shortest "${outputPath}"`,
+      `ffmpeg -y -i "${imgPath}" -vf "scale=${Math.round(w * 1.15)}:${Math.round(h * 1.15)}:force_original_aspect_ratio=increase,crop=${Math.round(w * 1.15)}:${Math.round(h * 1.15)}" "${scaledPath}"`,
+      { timeout: 30000 }
+    );
+
+    // Step 2: Create video with smooth Ken Burns zoom effect
+    // Zoom from 1.0 to 1.12 over the full duration for a gentle, cinematic effect
+    // Use higher fps (30) for smoothness, and linear zoom interpolation
+    const zoomStart = 1.0;
+    const zoomEnd = 1.12;
+    const zoomIncrement = ((zoomEnd - zoomStart) / totalFrames).toFixed(8);
+    execSync(
+      `ffmpeg -y -loop 1 -i "${scaledPath}" -i "${audioPath}" ` +
+      `-filter_complex "[0:v]zoompan=z='${zoomStart}+on*${zoomIncrement}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${w}x${h}:fps=${fps}[v]" ` +
+      `-map "[v]" -map 1:a:0 -c:v libx264 -preset fast -pix_fmt yuv420p -c:a aac -b:a 192k -t ${duration} -shortest "${outputPath}"`,
       { timeout: 120000 }
     );
 
@@ -143,7 +161,7 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
 
     return result.secure_url;
   } finally {
-    cleanup(imgPath, audioPath, outputPath);
+    cleanup(imgPath, audioPath, scaledPath, outputPath);
   }
 }
 

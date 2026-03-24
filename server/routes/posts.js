@@ -542,6 +542,8 @@ router.post('/:id/publish', async (req, res) => {
     console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${mediaUrls.length}`);
 
     // If a music track is selected, merge audio into the media
+    // Save original post type — music merge should NOT change it
+    const originalPostType = post.post_type;
     if (musicTrackUrl && mediaUrls.length > 0) {
       console.log(`[PUBLISH] Merging music track into media...`);
       const isVideo = mediaUrls[0].match(/\.(mp4|mov|avi|webm)$/i) || post.post_type === 'reel';
@@ -552,17 +554,13 @@ router.post('/:id/publish', async (req, res) => {
         mediaUrls[0] = mergedUrl;
         console.log(`[PUBLISH] Music merged into video: ${mergedUrl}`);
       } else {
-        // Image + music → create a video (15s for stories, 30s for images)
-        const duration = post.post_type === 'story' ? 15 : 30;
-        const size = post.post_type === 'story' ? '1080x1920' : '1080x1080';
+        // Image + music → create a video
+        const isStory = post.post_type === 'story';
+        const duration = isStory ? 15 : 30;
+        const size = isStory ? '1080x1920' : '1080x1080';
         const videoUrl = await createVideoFromImage(mediaUrls[0], musicTrackUrl, { duration, size });
         mediaUrls[0] = videoUrl;
-        // Switch post type for publishing since it's now a video
-        if (post.post_type === 'story') {
-          post.post_type = 'reel'; // IG stories with video use reel container
-        } else {
-          post.post_type = 'reel';
-        }
+        // Keep post type as-is — publishToInstagram/Facebook handle video stories properly
         console.log(`[PUBLISH] Image converted to video with music: ${videoUrl}`);
       }
     }
