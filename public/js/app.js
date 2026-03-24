@@ -6,6 +6,7 @@ const state = {
   selectedPhotos: [],   // array of photo URLs
   postType: null,
   postStyle: null,
+  videoModel: 'luma',
   music: 'none',
   languages: new Set(),
   currentStep: 1,
@@ -336,6 +337,12 @@ function selectPostStyle(el) {
   updateGenerateBtn();
 }
 
+function selectVideoModel(el) {
+  document.querySelectorAll('#video-model-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.videoModel = el.dataset.value;
+}
+
 function selectMusic(el) {
   document.querySelectorAll('#music-chips .chip').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
@@ -430,6 +437,7 @@ async function generatePost() {
       businessIds: [...state.selectedSMEs],
       postType: state.postType,
       postStyle: state.postStyle,
+      videoModel: state.videoModel,
       languages: [...state.languages],
       selectedPhotos: state.selectedPhotos,
       music: state.music,

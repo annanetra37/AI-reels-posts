@@ -4,12 +4,13 @@ const { smePool, postsPool } = require('../db/pool');
 const { generateCaption } = require('../services/caption-agent');
 const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
-const { generateVideo, generateImage, addAudio, pollGeneration } = require('../services/luma-api');
+const { getProvider, isConfigured } = require('../services/video-provider');
 const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
-  const { businessIds, postType, postStyle, languages, selectedPhotos, customDescription, music } = req.body;
+  const { businessIds, postType, postStyle, videoModel: rawVideoModel, languages, selectedPhotos, customDescription, music } = req.body;
+  const videoModel = rawVideoModel || 'luma';
 
   if (!businessIds?.length || !postType || !postStyle || !languages?.length) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -77,9 +78,14 @@ router.post('/generate', async (req, res) => {
       send('log', { level: 'success', message: `Luma brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
       send('luma', lumaResult);
 
-      // Step 3b: Call LumaLabs API to generate actual media
-      if (process.env.LUMALABS_API_KEY && process.env.LUMALABS_API_KEY !== 'your-lumalabs-key') {
-        send('status', { stage: 'luma_generating', message: '🎨 LumaLabs is generating your media...' });
+      // Step 3b: Call video provider API to generate actual media
+      const provider = getProvider(videoModel);
+      const { generateVideo, generateImage, addAudio, pollGeneration } = provider.api;
+
+      if (!isConfigured(videoModel)) {
+        send('log', { level: 'warn', message: `${provider.name} not configured — ${provider.envKey} not set in .env. Skipping media generation.` });
+      } else {
+        send('status', { stage: 'luma_generating', message: `🎨 ${provider.name} is generating your media...` });
 
         if (postType === 'reel' || postStyle === 'animation') {
           // Convert all selected photos to public URLs (via Cloudinary)
@@ -88,11 +94,10 @@ router.post('/generate', async (req, res) => {
           )).filter(Boolean);
 
           if (publicPhotos.length === 0) {
-            send('log', { level: 'warn', message: 'No public reference images available — skipping LumaLabs video generation. Ensure Cloudinary is configured in .env.' });
+            send('log', { level: 'warn', message: 'No public reference images available — skipping video generation. Ensure Cloudinary is configured in .env.' });
           } else {
             const pairs = [];
             if (postStyle === 'animation') {
-              // Animation: single photo, 5s, prompt includes fade-to-black
               pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
             } else if (publicPhotos.length === 1) {
               pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
@@ -110,43 +115,43 @@ router.post('/generate', async (req, res) => {
 
             const segments = lumaResult.segments || [{ prompt: lumaResult.prompt }];
             const totalEstimate = pairs.reduce((s, p) => s + parseInt(p.duration), 0);
-            send('log', { level: 'info', message: `Generating ${pairs.length} video segment(s) from ${publicPhotos.length} photos (~${totalEstimate}s total, $${(pairs.length * 0.85).toFixed(2)} est. cost)...` });
+            send('log', { level: 'info', message: `[${provider.name}] Generating ${pairs.length} video segment(s) from ${publicPhotos.length} photos (~${totalEstimate}s total)...` });
 
-            const generationIds = [];
+            const generations = []; // { id, _submission } for each segment
             for (let i = 0; i < pairs.length; i++) {
               const pair = pairs[i];
               const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
 
               send('log', { level: 'info', message: `Segment ${i + 1}/${pairs.length}: ${pair.duration} video${pair.end ? ' (transition between 2 photos)' : ' (single photo)'}...` });
               const gen = await generateVideo(segmentPrompt, pair.start, pair.end, pair.duration);
-              send('log', { level: 'info', message: `LumaLabs generation started (ID: ${gen.id}). Polling for completion...` });
+              send('log', { level: 'info', message: `${provider.name} generation started (ID: ${gen.id}). Polling for completion...` });
 
-              const completed = await pollGeneration(gen.id);
-              generationIds.push(gen.id);
+              const completed = await pollGeneration(gen.id, gen._submission);
+              generations.push(gen);
               const videoUrl = completed.assets?.video || completed.video?.url || null;
               if (videoUrl) {
                 mediaUrls.push(videoUrl);
                 send('log', { level: 'success', message: `Segment ${i + 1} ready: ${videoUrl}` });
               } else {
-                send('log', { level: 'warn', message: `Segment ${i + 1}: LumaLabs completed but no video URL returned` });
+                send('log', { level: 'warn', message: `Segment ${i + 1}: ${provider.name} completed but no video URL returned` });
               }
             }
 
-            // Add audio/music if requested (free — no extra credits)
-            if (music === 'auto' && generationIds.length > 0) {
+            // Add audio/music if requested (only if provider supports it)
+            if (music === 'auto' && generations.length > 0 && provider.supportsAudio) {
               const audioPrompt = lumaResult.musicSuggestion || 'upbeat modern background music matching the brand energy';
               send('status', { stage: 'luma_audio', message: '🎵 Adding AI-generated music...' });
-              send('log', { level: 'info', message: `Adding music to ${generationIds.length} segment(s): "${audioPrompt.slice(0, 80)}..."` });
+              send('log', { level: 'info', message: `Adding music to ${generations.length} segment(s): "${audioPrompt.slice(0, 80)}..."` });
 
-              for (let i = 0; i < generationIds.length; i++) {
+              for (let i = 0; i < generations.length; i++) {
                 try {
-                  const audioGen = await addAudio(generationIds[i], audioPrompt);
-                  const audioId = audioGen.id || generationIds[i];
+                  const audioGen = await addAudio(generations[i].id, audioPrompt);
+                  const audioId = audioGen.id || generations[i].id;
                   send('log', { level: 'info', message: `Audio generation started for segment ${i + 1} (ID: ${audioId}). Polling...` });
-                  const audioCompleted = await pollGeneration(audioId);
+                  const audioCompleted = await pollGeneration(audioId, audioGen._submission);
                   const audioVideoUrl = audioCompleted.assets?.video || null;
                   if (audioVideoUrl) {
-                    mediaUrls[i] = audioVideoUrl; // replace silent with audio version
+                    mediaUrls[i] = audioVideoUrl;
                     send('log', { level: 'success', message: `Segment ${i + 1} with music ready: ${audioVideoUrl}` });
                   } else {
                     send('log', { level: 'warn', message: `Segment ${i + 1}: audio done but no new URL — keeping silent version` });
@@ -155,34 +160,60 @@ router.post('/generate', async (req, res) => {
                   send('log', { level: 'warn', message: `Audio failed for segment ${i + 1}: ${audioErr.message}. Keeping silent version.` });
                 }
               }
+            } else if (music === 'auto' && !provider.supportsAudio) {
+              send('log', { level: 'warn', message: `${provider.name} does not support audio generation — skipping music. Consider using LumaLabs for music support.` });
             }
 
             lumaResultUrl = mediaUrls[0] || null;
-            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${totalEstimate}s reel${music === 'auto' ? ' with music' : ''}` });
+            send('log', { level: 'success', message: `Generated ${mediaUrls.length} video segment(s) — total ~${totalEstimate}s reel` });
           }
         } else if (postType === 'carousel') {
-          // Generate images for each slide
-          const slides = lumaResult.slides || [];
-          send('log', { level: 'info', message: `Generating ${slides.length} carousel slide image(s) via LumaLabs...` });
+          if (!provider.supportsImage) {
+            // Fall back to Luma for carousel image generation
+            const lumaProvider = getProvider('luma');
+            if (isConfigured('luma')) {
+              send('log', { level: 'info', message: `${provider.name} doesn't support image generation — using LumaLabs for carousel slides.` });
+              const { generateImage: lumaGenerateImage, pollGeneration: lumaPoll } = lumaProvider.api;
+              const slides = lumaResult.slides || [];
+              send('log', { level: 'info', message: `Generating ${slides.length} carousel slide image(s) via LumaLabs...` });
 
-          for (let i = 0; i < slides.length; i++) {
-            const slide = slides[i];
-            const slidePrompt = slide.prompt || lumaResult.prompt;
-            send('log', { level: 'info', message: `Generating slide ${i + 1}/${slides.length}...` });
+              for (let i = 0; i < slides.length; i++) {
+                const slide = slides[i];
+                const slidePrompt = slide.prompt || lumaResult.prompt;
+                send('log', { level: 'info', message: `Generating slide ${i + 1}/${slides.length}...` });
 
-            const gen = await generateImage(slidePrompt);
-            const completed = await pollGeneration(gen.id);
-            const imageUrl = completed.assets?.image || null;
-            if (imageUrl) {
-              mediaUrls.push(imageUrl);
-              send('log', { level: 'success', message: `Slide ${i + 1} ready: ${imageUrl}` });
+                const gen = await lumaGenerateImage(slidePrompt);
+                const completed = await lumaPoll(gen.id);
+                const imageUrl = completed.assets?.image || null;
+                if (imageUrl) {
+                  mediaUrls.push(imageUrl);
+                  send('log', { level: 'success', message: `Slide ${i + 1} ready: ${imageUrl}` });
+                }
+              }
+            } else {
+              send('log', { level: 'warn', message: `${provider.name} doesn't support image generation and LumaLabs is not configured. Skipping carousel slides.` });
+            }
+          } else {
+            const slides = lumaResult.slides || [];
+            send('log', { level: 'info', message: `Generating ${slides.length} carousel slide image(s) via ${provider.name}...` });
+
+            for (let i = 0; i < slides.length; i++) {
+              const slide = slides[i];
+              const slidePrompt = slide.prompt || lumaResult.prompt;
+              send('log', { level: 'info', message: `Generating slide ${i + 1}/${slides.length}...` });
+
+              const gen = await generateImage(slidePrompt);
+              const completed = await pollGeneration(gen.id, gen._submission);
+              const imageUrl = completed.assets?.image || null;
+              if (imageUrl) {
+                mediaUrls.push(imageUrl);
+                send('log', { level: 'success', message: `Slide ${i + 1} ready: ${imageUrl}` });
+              }
             }
           }
           lumaResultUrl = mediaUrls[0] || null;
           send('log', { level: 'success', message: `Generated ${mediaUrls.length} carousel image(s)` });
         }
-      } else {
-        send('log', { level: 'warn', message: 'LUMALABS_API_KEY not set — skipping media generation. Set it in .env to enable.' });
       }
     } else {
       send('log', { level: 'info', message: `Post type "${postType}" — skipping LumaLabs generation` });
