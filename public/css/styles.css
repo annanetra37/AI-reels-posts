@@ -765,6 +765,83 @@ header p {
   .form-grid { grid-template-columns: 1fr; }
 }
 
+/* ===== Music Library ===== */
+.music-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  background: var(--bg);
+}
+
+.music-track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 0.82rem;
+}
+
+.music-track-item:hover {
+  background: var(--border);
+}
+
+.music-track-item.selected {
+  background: var(--primary);
+  color: white;
+}
+
+.music-track-item.selected .music-track-meta {
+  color: rgba(255,255,255,0.7);
+}
+
+.music-track-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.music-track-name {
+  font-weight: 600;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.music-track-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  display: block;
+}
+
+.music-track-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.music-btn-sm {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.music-btn-sm:hover {
+  opacity: 1;
+}
+
 /* ===== Regen Settings (compact inline) ===== */
 .regen-settings {
   background: var(--bg);

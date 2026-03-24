@@ -8,6 +8,7 @@ const { getProvider, isConfigured } = require('../services/video-provider');
 const { toPublicUrl } = require('../services/upload');
 const { createStoryCollage } = require('../services/story-collage');
 const { uploadBuffer } = require('../services/cloudinary');
+const { mergeAudioWithVideo, createVideoFromImage } = require('../services/audio-merge');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
@@ -498,16 +499,42 @@ router.post('/:id/trim-video', async (req, res) => {
 
 // POST /api/posts/:id/publish — publish to Instagram and/or Facebook
 router.post('/:id/publish', async (req, res) => {
-  const { instagram = true, facebook = false } = req.body || {};
-  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id} — IG: ${instagram}, FB: ${facebook}`);
+  const { instagram = true, facebook = false, musicTrackUrl = null } = req.body || {};
+  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id} — IG: ${instagram}, FB: ${facebook}, music: ${musicTrackUrl ? 'yes' : 'none'}`);
   try {
     const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Post not found' });
 
     const post = rows[0];
     const fullCaption = `${post.caption}\n\n${post.hashtags}`;
-    const mediaUrls = post.media_urls || post.selected_photos;
-    console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${(mediaUrls || []).length}`);
+    let mediaUrls = [...(post.media_urls || post.selected_photos || [])];
+    console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${mediaUrls.length}`);
+
+    // If a music track is selected, merge audio into the media
+    if (musicTrackUrl && mediaUrls.length > 0) {
+      console.log(`[PUBLISH] Merging music track into media...`);
+      const isVideo = mediaUrls[0].match(/\.(mp4|mov|avi|webm)$/i) || post.post_type === 'reel';
+
+      if (isVideo) {
+        // Merge audio into existing video
+        const mergedUrl = await mergeAudioWithVideo(mediaUrls[0], musicTrackUrl, { replaceAudio: false });
+        mediaUrls[0] = mergedUrl;
+        console.log(`[PUBLISH] Music merged into video: ${mergedUrl}`);
+      } else {
+        // Image + music → create a video (15s for stories, 30s for images)
+        const duration = post.post_type === 'story' ? 15 : 30;
+        const size = post.post_type === 'story' ? '1080x1920' : '1080x1080';
+        const videoUrl = await createVideoFromImage(mediaUrls[0], musicTrackUrl, { duration, size });
+        mediaUrls[0] = videoUrl;
+        // Switch post type for publishing since it's now a video
+        if (post.post_type === 'story') {
+          post.post_type = 'reel'; // IG stories with video use reel container
+        } else {
+          post.post_type = 'reel';
+        }
+        console.log(`[PUBLISH] Image converted to video with music: ${videoUrl}`);
+      }
+    }
 
     let instagramId = null;
     let facebookId = null;

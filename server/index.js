@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const businessesRouter = require('./routes/businesses');
 const postsRouter = require('./routes/posts');
+const musicRouter = require('./routes/music');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // API routes
 app.use('/api/businesses', businessesRouter);
 app.use('/api/posts', postsRouter);
+app.use('/api/music', musicRouter);
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));

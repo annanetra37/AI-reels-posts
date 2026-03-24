@@ -13,6 +13,8 @@ const state = {
   currentStep: 1,
   generatedPost: null,  // { post, caption, luma }
   activeLang: null,     // currently viewed language in preview
+  selectedTrack: null,  // { id, name, url } or null for no music
+  musicTracks: [],      // cached music library
 };
 
 // ===== Init =====
@@ -533,6 +535,9 @@ function handleSSEEvent(event, data) {
 function renderPreview() {
   if (!state.generatedPost) return;
 
+  // Load music library
+  loadMusicLibrary();
+
   const { caption: captionData, luma, post } = state.generatedPost;
 
   // Set up language tabs
@@ -677,7 +682,8 @@ async function publishPost() {
   const btn = document.getElementById('btn-publish');
   btn.disabled = true;
   btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Publishing...';
-  showStatus(`Publishing to ${targets.join(' & ')}...`);
+  const musicLabel = state.selectedTrack ? ` with "${state.selectedTrack.name}"` : '';
+  showStatus(`Publishing to ${targets.join(' & ')}${musicLabel}...`);
 
   try {
     // Save edits first
@@ -694,7 +700,11 @@ async function publishPost() {
     const res = await fetch(`/api/posts/${state.generatedPost.post.id}/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instagram: toInstagram, facebook: toFacebook }),
+      body: JSON.stringify({
+        instagram: toInstagram,
+        facebook: toFacebook,
+        musicTrackUrl: state.selectedTrack?.url || null,
+      }),
     });
 
     const result = await res.json();
@@ -1131,4 +1141,145 @@ async function loadPostFromHistory(postId) {
       break;
     }
   }
+}
+
+// ===== Music Library =====
+
+async function loadMusicLibrary() {
+  try {
+    const res = await fetch('/api/music');
+    const tracks = await res.json();
+    state.musicTracks = tracks;
+    renderMusicTracks();
+  } catch (err) {
+    console.error('Failed to load music library:', err);
+  }
+}
+
+function renderMusicTracks() {
+  const container = document.getElementById('music-tracks');
+  if (!container) return;
+
+  const noMusicItem = `
+    <div class="music-track-item ${!state.selectedTrack ? 'selected' : ''}" data-track-id="" onclick="selectMusicTrack(this, null)">
+      <div class="music-track-info">
+        <span class="music-track-name">No Music</span>
+      </div>
+    </div>`;
+
+  const trackItems = state.musicTracks.map(t => {
+    const isSelected = state.selectedTrack?.id === t.id;
+    const meta = [t.artist, t.genre, t.mood, t.duration_seconds ? formatDuration(t.duration_seconds) : null]
+      .filter(Boolean).join(' \u00B7 ');
+    return `
+      <div class="music-track-item ${isSelected ? 'selected' : ''}" data-track-id="${t.id}" onclick="selectMusicTrack(this, ${t.id})">
+        <div class="music-track-actions">
+          <button class="music-btn-sm" onclick="event.stopPropagation(); previewMusicTrack('${t.url}')" title="Preview">&#9654;</button>
+        </div>
+        <div class="music-track-info">
+          <span class="music-track-name">${escapeHtml(t.name)}</span>
+          ${meta ? `<span class="music-track-meta">${escapeHtml(meta)}</span>` : ''}
+        </div>
+        <div class="music-track-actions">
+          <button class="music-btn-sm" onclick="event.stopPropagation(); deleteMusicTrack(${t.id})" title="Delete">&times;</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = noMusicItem + trackItems;
+}
+
+function selectMusicTrack(el, trackId) {
+  // Stop any preview
+  const player = document.getElementById('music-preview-player');
+  if (player) { player.pause(); player.src = ''; }
+
+  if (!trackId) {
+    state.selectedTrack = null;
+  } else {
+    state.selectedTrack = state.musicTracks.find(t => t.id === trackId) || null;
+  }
+
+  // Update selection UI
+  document.querySelectorAll('.music-track-item').forEach(item => item.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function previewMusicTrack(url) {
+  const player = document.getElementById('music-preview-player');
+  if (!player) return;
+
+  if (player.src === url && !player.paused) {
+    player.pause();
+    return;
+  }
+
+  player.src = url;
+  player.play().catch(() => {});
+}
+
+function toggleMusicUpload() {
+  const form = document.getElementById('music-upload-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+}
+
+async function uploadMusicTrack() {
+  const name = document.getElementById('music-name').value.trim();
+  const artist = document.getElementById('music-artist').value.trim();
+  const genre = document.getElementById('music-genre').value;
+  const mood = document.getElementById('music-mood').value;
+  const fileInput = document.getElementById('music-file');
+
+  if (!name) return alert('Track name is required');
+  if (!fileInput.files.length) return alert('Select an audio file');
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  formData.append('name', name);
+  if (artist) formData.append('artist', artist);
+  if (genre) formData.append('genre', genre);
+  if (mood) formData.append('mood', mood);
+
+  try {
+    const res = await fetch('/api/music', { method: 'POST', body: formData });
+    const track = await res.json();
+    if (track.error) throw new Error(track.error);
+
+    // Reset form
+    document.getElementById('music-name').value = '';
+    document.getElementById('music-artist').value = '';
+    document.getElementById('music-genre').value = '';
+    document.getElementById('music-mood').value = '';
+    fileInput.value = '';
+    document.getElementById('music-upload-form').style.display = 'none';
+
+    // Reload library
+    await loadMusicLibrary();
+  } catch (err) {
+    alert('Upload failed: ' + err.message);
+  }
+}
+
+async function deleteMusicTrack(id) {
+  if (!confirm('Delete this track?')) return;
+
+  try {
+    await fetch(`/api/music/${id}`, { method: 'DELETE' });
+    if (state.selectedTrack?.id === id) state.selectedTrack = null;
+    await loadMusicLibrary();
+  } catch (err) {
+    alert('Delete failed: ' + err.message);
+  }
+}
+
+function formatDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
