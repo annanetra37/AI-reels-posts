@@ -738,6 +738,7 @@ async function publishPost() {
         instagram: toInstagram,
         facebook: toFacebook,
         musicTrackUrl: state.selectedTrack?.url || null,
+        animation: document.getElementById('publish-animation').checked,
       }),
     });
 
@@ -1429,13 +1430,11 @@ function selectMusicTrack(el, trackId) {
   if (!trackId && trackId !== 0) {
     state.selectedTrack = null;
     stopMusicPreview();
-    removeKenBurns();
   } else {
     state.selectedTrack = state.musicTracks.find(t => t.id === trackId) || null;
     // Auto-preview on select
     if (state.selectedTrack) {
       previewMusicTrack(trackId);
-      applyKenBurns();
     }
   }
 
@@ -1531,6 +1530,88 @@ function updatePlayButtons(activeTrackId, playing) {
       btn.innerHTML = '&#9654;';
     }
   });
+}
+
+// ===== Animation Toggle =====
+function toggleAnimationPreview() {
+  const checked = document.getElementById('publish-animation').checked;
+  if (checked) {
+    applyKenBurns();
+  } else {
+    removeKenBurns();
+  }
+}
+
+// ===== Replace / Remove Media =====
+function replaceMedia() {
+  document.getElementById('replace-media-input').click();
+}
+
+async function handleMediaReplace(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  showStatus('Uploading replacement media...');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch('/api/posts/upload-media', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const newUrl = data.url;
+    const isVideo = file.type.startsWith('video/');
+
+    // Update state
+    if (state.generatedPost) {
+      state.generatedPost.mediaUrls = [newUrl];
+      if (state.generatedPost.post) {
+        state.generatedPost.post.media_urls = [newUrl];
+      }
+    }
+    state.selectedPhotos = [newUrl];
+
+    // Update preview
+    const mediaEl = document.getElementById('preview-media');
+    if (isVideo) {
+      mediaEl.innerHTML = `<video id="preview-video" src="${newUrl}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
+    } else {
+      mediaEl.innerHTML = `<img src="${newUrl}" alt="Post media">`;
+    }
+
+    // Save to DB if post exists
+    if (state.generatedPost?.post?.id) {
+      await fetch(`/api/posts/${state.generatedPost.post.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedPhotos: [newUrl] }),
+      });
+    }
+
+    showStatus('Media replaced!');
+    setTimeout(() => hideStatus(), 2000);
+  } catch (err) {
+    showStatus('Replace failed: ' + err.message, true);
+  }
+
+  // Reset file input
+  event.target.value = '';
+}
+
+function removeMedia() {
+  const mediaEl = document.getElementById('preview-media');
+  mediaEl.innerHTML = '<span style="color: var(--text-muted)">No media — click Replace to add</span>';
+
+  if (state.generatedPost) {
+    state.generatedPost.mediaUrls = [];
+    if (state.generatedPost.post) {
+      state.generatedPost.post.media_urls = [];
+    }
+  }
+  state.selectedPhotos = [];
+  removeKenBurns();
 }
 
 // Ken Burns effect on the phone preview image
@@ -1672,7 +1753,6 @@ function selectFreesoundTrack(el, trackId) {
   document.querySelectorAll('.music-track-item').forEach(item => item.classList.remove('selected'));
   el.classList.add('selected');
   previewFreesoundTrack(trackId);
-  applyKenBurns();
 }
 
 function previewFreesoundTrack(trackId) {

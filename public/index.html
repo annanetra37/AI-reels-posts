@@ -199,6 +199,11 @@
             <div class="phone-media" id="preview-media">
               <span style="color: var(--text-muted)">Media preview</span>
             </div>
+            <div style="display:flex;gap:6px;justify-content:center;margin:-6px 0 4px 0;">
+              <button class="btn btn-secondary" onclick="replaceMedia()" style="padding:3px 10px;font-size:0.7rem;">📷 Replace Media</button>
+              <button class="btn btn-secondary" onclick="removeMedia()" style="padding:3px 10px;font-size:0.7rem;">✕ Remove</button>
+            </div>
+            <input type="file" id="replace-media-input" accept="image/*,video/*" style="display:none" onchange="handleMediaReplace(event)">
             <div class="phone-caption" id="preview-caption"></div>
             <div class="phone-hashtags" id="preview-hashtags"></div>
           </div>
@@ -341,12 +346,16 @@
             <audio id="music-preview-player" style="display: none;"></audio>
           </div>
 
-          <div class="publish-targets" style="margin-top: 16px; display: flex; gap: 16px; align-items: center;">
+          <div class="publish-targets" style="margin-top: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
               <input type="checkbox" id="publish-instagram" checked> Instagram
             </label>
             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
               <input type="checkbox" id="publish-facebook"> Facebook Page
+            </label>
+            <span style="border-left: 1px solid var(--border); height: 20px;"></span>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;" title="Add Ken Burns zoom animation (converts image to video)">
+              <input type="checkbox" id="publish-animation" onchange="toggleAnimationPreview()"> Zoom Animation
             </label>
           </div>
 
