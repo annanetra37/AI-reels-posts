@@ -34,6 +34,30 @@ router.post('/upload-video', videoUpload.single('video'), async (req, res) => {
   }
 });
 
+// POST /api/posts/upload-media — upload a replacement image or video
+const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+router.post('/upload-media', mediaUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  try {
+    const { cloudinary } = require('../services/cloudinary');
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'uploaded-media', resource_type: isVideo ? 'video' : 'image' },
+        (err, result) => err ? reject(err) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+    console.log(`[UPLOAD] Media uploaded to Cloudinary: ${result.secure_url}`);
+    res.json({ url: result.secure_url, type: isVideo ? 'video' : 'image' });
+  } catch (err) {
+    console.error('[UPLOAD] Media upload error:', err);
+    res.status(500).json({ error: err.message || 'Upload failed' });
+  }
+});
+
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
   const { businessIds, postType, postStyle, videoModel: rawVideoModel, videoQuality, languages, selectedPhotos, customDescription, music, uploadedVideoUrl } = req.body;
@@ -530,8 +554,8 @@ router.post('/:id/trim-video', async (req, res) => {
 
 // POST /api/posts/:id/publish — publish to Instagram and/or Facebook
 router.post('/:id/publish', async (req, res) => {
-  const { instagram = true, facebook = false, musicTrackUrl = null } = req.body || {};
-  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id} — IG: ${instagram}, FB: ${facebook}, music: ${musicTrackUrl ? 'yes' : 'none'}`);
+  const { instagram = true, facebook = false, musicTrackUrl = null, animation = false } = req.body || {};
+  console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id} — IG: ${instagram}, FB: ${facebook}, music: ${musicTrackUrl ? 'yes' : 'none'}, animation: ${animation}`);
   try {
     const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Post not found' });
@@ -541,27 +565,39 @@ router.post('/:id/publish', async (req, res) => {
     let mediaUrls = [...(post.media_urls || post.selected_photos || [])];
     console.log(`[PUBLISH] Post type: ${post.post_type}, style: ${post.post_style}, media URLs: ${mediaUrls.length}`);
 
-    // If a music track is selected, merge audio into the media
-    // Save original post type — music merge should NOT change it
-    const originalPostType = post.post_type;
-    if (musicTrackUrl && mediaUrls.length > 0) {
-      console.log(`[PUBLISH] Merging music track into media...`);
+    // Handle music and/or animation for the media
+    if (mediaUrls.length > 0 && (musicTrackUrl || animation)) {
       const isVideo = mediaUrls[0].match(/\.(mp4|mov|avi|webm)$/i) || post.post_type === 'reel';
 
-      if (isVideo) {
-        // Merge audio into existing video
+      if (isVideo && musicTrackUrl) {
+        // Video + music → merge audio into existing video
+        console.log(`[PUBLISH] Merging music track into video...`);
         const mergedUrl = await mergeAudioWithVideo(mediaUrls[0], musicTrackUrl, { replaceAudio: false });
         mediaUrls[0] = mergedUrl;
         console.log(`[PUBLISH] Music merged into video: ${mergedUrl}`);
-      } else {
-        // Image + music → create a video
+      } else if (!isVideo && animation && musicTrackUrl) {
+        // Image + animation + music → create animated video with music
+        console.log(`[PUBLISH] Creating animated video from image with music...`);
         const isStory = post.post_type === 'story';
         const duration = isStory ? 15 : 30;
         const size = isStory ? '1080x1920' : '1080x1080';
         const videoUrl = await createVideoFromImage(mediaUrls[0], musicTrackUrl, { duration, size });
         mediaUrls[0] = videoUrl;
-        // Keep post type as-is — publishToInstagram/Facebook handle video stories properly
-        console.log(`[PUBLISH] Image converted to video with music: ${videoUrl}`);
+        console.log(`[PUBLISH] Animated video with music: ${videoUrl}`);
+      } else if (!isVideo && animation && !musicTrackUrl) {
+        // Image + animation only (no music) → create silent animated video
+        console.log(`[PUBLISH] Creating animated video from image (no music)...`);
+        const isStory = post.post_type === 'story';
+        const duration = isStory ? 15 : 30;
+        const size = isStory ? '1080x1920' : '1080x1080';
+        const videoUrl = await createVideoFromImage(mediaUrls[0], null, { duration, size });
+        mediaUrls[0] = videoUrl;
+        console.log(`[PUBLISH] Animated video (silent): ${videoUrl}`);
+      } else if (!isVideo && !animation && musicTrackUrl) {
+        // Image + music only (NO animation) → keep as image, music ignored for image posts
+        // Music without animation on images: we can't add audio to a still image without making it a video
+        // So we just publish the image as-is and log a note
+        console.log(`[PUBLISH] Music selected but animation disabled — publishing image as-is (music requires animation for image posts)`);
       }
     }
 
@@ -670,7 +706,7 @@ router.post('/:id/publish', async (req, res) => {
   }
 });
 
-// PUT /api/posts/:id — update a draft post (edit caption, etc.)
+// PUT /api/posts/:id — update a draft post (edit caption, media, etc.)
 router.put('/:id', async (req, res) => {
   const { caption, hashtags, selectedPhotos } = req.body;
   try {
@@ -678,7 +714,8 @@ router.put('/:id', async (req, res) => {
       UPDATE generated_posts
       SET caption = COALESCE($1, caption),
           hashtags = COALESCE($2, hashtags),
-          selected_photos = COALESCE($3, selected_photos)
+          selected_photos = COALESCE($3, selected_photos),
+          media_urls = COALESCE($3, media_urls)
       WHERE id = $4
       RETURNING *
     `, [caption, hashtags, selectedPhotos, req.params.id]);

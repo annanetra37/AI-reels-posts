@@ -112,20 +112,29 @@ async function mergeAudioWithVideo(videoUrl, audioUrl, opts = {}) {
  * @param {string} [opts.size='1080x1080'] - Output size (WxH)
  * @returns {Promise<string>} - Cloudinary URL of the video
  */
+/**
+ * Create a video from a static image with Ken Burns animation.
+ * Optionally adds a music track. If audioUrl is null, creates a silent video.
+ * @param {string} imageUrl - URL of the image
+ * @param {string|null} audioUrl - URL of the music track (null for silent)
+ * @param {object} [opts]
+ * @param {number} [opts.duration=15] - Video duration in seconds
+ * @param {string} [opts.size='1080x1080'] - Output size (WxH)
+ * @returns {Promise<string>} - Cloudinary URL of the video
+ */
 async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
   const { duration = 15, size = '1080x1080' } = opts;
   ensureTmpDir();
 
   const id = Date.now();
   const imgPath = path.join(TMP_DIR, `img2vid_img_${id}.jpg`);
-  const audioPath = path.join(TMP_DIR, `img2vid_audio_${id}.mp3`);
+  const audioPath = audioUrl ? path.join(TMP_DIR, `img2vid_audio_${id}.mp3`) : null;
   const outputPath = path.join(TMP_DIR, `img2vid_output_${id}.mp4`);
 
   try {
-    await Promise.all([
-      downloadToFile(imageUrl, imgPath),
-      downloadToFile(audioUrl, audioPath),
-    ]);
+    const downloads = [downloadToFile(imageUrl, imgPath)];
+    if (audioUrl) downloads.push(downloadToFile(audioUrl, audioPath));
+    await Promise.all(downloads);
 
     const [w, h] = size.split('x').map(Number);
     const fps = 30;
@@ -145,8 +154,8 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
     // The crop center drifts slightly for natural parallax motion.
 
     const scale = 3; // supersampling factor
-    const sw = w * scale; // 3240 for 1080
-    const sh = h * scale; // 3240 for 1080
+    const sw = w * scale;
+    const sh = h * scale;
 
     // Crop window dimensions (in 3x space) — start big, end smaller
     const cropStartW = Math.round(sw * 0.93);
@@ -154,14 +163,10 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
     const cropStartH = Math.round(sh * 0.93);
     const cropEndH = Math.round(sh * 0.82);
 
-    // Express crop size as linear interpolation: start + (end-start) * t
-    // where t = n / totalFrames (n is frame number)
     const cwExpr = `${cropStartW}+(${cropEndW - cropStartW})*n/${totalFrames}`;
     const chExpr = `${cropStartH}+(${cropEndH - cropStartH})*n/${totalFrames}`;
 
-    // Center crop with a slight drift (adds natural parallax)
-    // Drift from center-left to center-right over duration
-    const driftPixels = Math.round(sw * 0.02); // 2% drift
+    const driftPixels = Math.round(sw * 0.02);
     const cxExpr = `(iw-${cropStartW}+(${cropStartW - cropEndW})*n/${totalFrames})/2+${driftPixels}*(n/${totalFrames}-0.5)`;
     const cyExpr = `(ih-${cropStartH}+(${cropStartH - cropEndH})*n/${totalFrames})/2`;
 
@@ -171,15 +176,27 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
       `crop='${cwExpr}':'${chExpr}':'${cxExpr}':'${cyExpr}',` +
       `scale=${w}:${h}:flags=lanczos[v]`;
 
-    execSync(
-      `ffmpeg -y -loop 1 -i "${imgPath}" -i "${audioPath}" ` +
-      `-filter_complex "${filterComplex}" ` +
-      `-map "[v]" -map 1:a:0 ` +
-      `-c:v libx264 -preset medium -crf 18 -r ${fps} -pix_fmt yuv420p ` +
-      `-c:a aac -b:a 192k ` +
-      `-t ${duration} -shortest "${outputPath}"`,
-      { timeout: 180000 }
-    );
+    let ffmpegCmd;
+    if (audioPath) {
+      // With audio
+      ffmpegCmd =
+        `ffmpeg -y -loop 1 -i "${imgPath}" -i "${audioPath}" ` +
+        `-filter_complex "${filterComplex}" ` +
+        `-map "[v]" -map 1:a:0 ` +
+        `-c:v libx264 -preset medium -crf 18 -r ${fps} -pix_fmt yuv420p ` +
+        `-c:a aac -b:a 192k ` +
+        `-t ${duration} -shortest "${outputPath}"`;
+    } else {
+      // Silent video (no audio input)
+      ffmpegCmd =
+        `ffmpeg -y -loop 1 -i "${imgPath}" ` +
+        `-filter_complex "${filterComplex}" ` +
+        `-map "[v]" ` +
+        `-c:v libx264 -preset medium -crf 18 -r ${fps} -pix_fmt yuv420p ` +
+        `-t ${duration} "${outputPath}"`;
+    }
+
+    execSync(ffmpegCmd, { timeout: 180000 });
 
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload(outputPath, {
@@ -190,7 +207,7 @@ async function createVideoFromImage(imageUrl, audioUrl, opts = {}) {
 
     return result.secure_url;
   } finally {
-    cleanup(imgPath, audioPath, outputPath);
+    cleanup(imgPath, ...(audioPath ? [audioPath] : []), outputPath);
   }
 }
 
