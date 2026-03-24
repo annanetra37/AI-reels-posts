@@ -16,8 +16,11 @@ async function publishToInstagram({ postType, caption, mediaUrls }) {
     throw new Error('No media URLs provided for publishing.');
   }
 
-  if (postType === 'image' || postType === 'story') {
-    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: postType === 'story' });
+  if (postType === 'image') {
+    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: false });
+  } else if (postType === 'story') {
+    // Stories always publish as a single image (collage if multi-photo)
+    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: true });
   } else if (postType === 'reel') {
     return publishReel({ caption, videoUrl: mediaUrls[0] });
   } else if (postType === 'carousel') {

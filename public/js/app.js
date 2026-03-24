@@ -551,7 +551,7 @@ function renderPreview() {
   const mediaEl = document.getElementById('preview-media');
   const generatedMedia = state.generatedPost.mediaUrls || [];
   const postType = state.postType || state.generatedPost?.post?.post_type;
-  const hasVideo = generatedMedia.length > 0 && (postType === 'reel' || postType === 'story');
+  const hasVideo = generatedMedia.length > 0 && postType === 'reel';
   if (generatedMedia.length > 0) {
     if (hasVideo && generatedMedia[0]) {
       mediaEl.innerHTML = `<video id="preview-video" src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
