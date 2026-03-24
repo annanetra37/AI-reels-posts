@@ -173,6 +173,33 @@
             <div class="phone-hashtags" id="preview-hashtags"></div>
           </div>
 
+          <!-- Video controls (shown when video is present) -->
+          <div id="video-controls" style="display:none; margin-top: 12px;">
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <button class="btn btn-secondary" id="btn-regen-video" onclick="regenerateVideoOnly()" style="flex:1;padding:10px;font-size:0.85rem">
+                🎬 Regenerate Video Only
+              </button>
+            </div>
+
+            <!-- Trim controls -->
+            <div class="trim-panel" id="trim-panel">
+              <label style="display:block;font-size:0.8rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Trim Video</label>
+              <div class="trim-slider-container">
+                <input type="range" id="trim-start" min="0" max="100" value="0" step="0.1" class="trim-slider trim-start">
+                <input type="range" id="trim-end" min="0" max="100" value="100" step="0.1" class="trim-slider trim-end">
+                <div class="trim-track" id="trim-track"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+                <span class="trim-time" id="trim-start-label">0:00</span>
+                <span style="font-size:0.75rem;color:var(--text-muted)" id="trim-duration-label">Duration: --</span>
+                <span class="trim-time" id="trim-end-label">0:00</span>
+              </div>
+              <button class="btn btn-primary" id="btn-trim" onclick="trimVideo()" style="width:100%;margin-top:10px;padding:10px;font-size:0.85rem">
+                ✂️ Trim & Save
+              </button>
+            </div>
+          </div>
+
           <!-- Luma creative brief (shown for reels/carousels) -->
           <div class="luma-brief" id="luma-brief" style="display:none">
             <h4>Creative Brief (LumaLabs)</h4>

@@ -544,14 +544,25 @@ function renderPreview() {
   const mediaEl = document.getElementById('preview-media');
   const generatedMedia = state.generatedPost.mediaUrls || [];
   const postType = state.postType || state.generatedPost?.post?.post_type;
+  const hasVideo = generatedMedia.length > 0 && (postType === 'reel' || postType === 'story');
   if (generatedMedia.length > 0) {
-    if (postType === 'reel' && generatedMedia[0]) {
-      mediaEl.innerHTML = `<video src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
+    if (hasVideo && generatedMedia[0]) {
+      mediaEl.innerHTML = `<video id="preview-video" src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
     } else {
       mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
     }
   } else if (state.selectedPhotos.length > 0) {
     mediaEl.innerHTML = `<img src="${state.selectedPhotos[0]}" alt="Post media">`;
+  }
+
+  // Show/hide video controls
+  const videoControls = document.getElementById('video-controls');
+  if (hasVideo || (postType === 'reel' || postStyle === 'animation')) {
+    videoControls.style.display = 'block';
+    document.getElementById('trim-panel').style.display = hasVideo ? 'block' : 'none';
+    if (hasVideo) initTrimSlider();
+  } else {
+    videoControls.style.display = 'none';
   }
 
   // Username from first selected business
@@ -810,6 +821,198 @@ function renderPostHistory(posts) {
   state.historyPosts = posts;
 }
 
+// ===== Regenerate Video Only =====
+async function regenerateVideoOnly() {
+  const postId = state.generatedPost?.post?.id;
+  if (!postId) {
+    showStatus('No post to regenerate video for', true);
+    return;
+  }
+
+  const btn = document.getElementById('btn-regen-video');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Regenerating...';
+  showStatus('Regenerating video...');
+  addLog('info', `Regenerating video only for post #${postId} using ${state.videoModel}`);
+
+  try {
+    const response = await fetch(`/api/posts/${postId}/regenerate-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoModel: state.videoModel,
+        music: state.music,
+      }),
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      let eventName = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventName = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          if (eventName === 'complete') {
+            // Update media URLs in state without touching caption
+            state.generatedPost.mediaUrls = data.mediaUrls || [];
+            if (state.generatedPost.post) {
+              state.generatedPost.post.media_urls = data.mediaUrls || [];
+            }
+            renderPreview();
+          } else if (eventName === 'luma') {
+            state.generatedPost.luma = data;
+          } else {
+            handleSSEEvent(eventName, data);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    addLog('error', `Video regeneration failed: ${err.message}`);
+    showStatus('Video regeneration failed: ' + err.message, true);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '🎬 Regenerate Video Only';
+}
+
+// ===== Video Trimming =====
+let trimState = { duration: 0, startTime: 0, endTime: 0 };
+
+function initTrimSlider() {
+  const video = document.getElementById('preview-video');
+  if (!video) return;
+
+  const setup = () => {
+    trimState.duration = video.duration || 0;
+    trimState.startTime = 0;
+    trimState.endTime = trimState.duration;
+
+    const startSlider = document.getElementById('trim-start');
+    const endSlider = document.getElementById('trim-end');
+
+    startSlider.max = trimState.duration;
+    startSlider.value = 0;
+    startSlider.step = 0.1;
+
+    endSlider.max = trimState.duration;
+    endSlider.value = trimState.duration;
+    endSlider.step = 0.1;
+
+    updateTrimLabels();
+
+    startSlider.oninput = () => {
+      trimState.startTime = parseFloat(startSlider.value);
+      if (trimState.startTime >= trimState.endTime - 0.5) {
+        trimState.startTime = trimState.endTime - 0.5;
+        startSlider.value = trimState.startTime;
+      }
+      video.currentTime = trimState.startTime;
+      updateTrimLabels();
+    };
+
+    endSlider.oninput = () => {
+      trimState.endTime = parseFloat(endSlider.value);
+      if (trimState.endTime <= trimState.startTime + 0.5) {
+        trimState.endTime = trimState.startTime + 0.5;
+        endSlider.value = trimState.endTime;
+      }
+      video.currentTime = trimState.endTime;
+      updateTrimLabels();
+    };
+  };
+
+  if (video.readyState >= 1) {
+    setup();
+  } else {
+    video.addEventListener('loadedmetadata', setup, { once: true });
+  }
+}
+
+function updateTrimLabels() {
+  document.getElementById('trim-start-label').textContent = formatTime(trimState.startTime);
+  document.getElementById('trim-end-label').textContent = formatTime(trimState.endTime);
+  const trimDuration = trimState.endTime - trimState.startTime;
+  document.getElementById('trim-duration-label').textContent = `Duration: ${trimDuration.toFixed(1)}s`;
+
+  // Update visual track
+  const track = document.getElementById('trim-track');
+  if (track && trimState.duration > 0) {
+    const leftPct = (trimState.startTime / trimState.duration) * 100;
+    const rightPct = (trimState.endTime / trimState.duration) * 100;
+    track.style.left = leftPct + '%';
+    track.style.width = (rightPct - leftPct) + '%';
+  }
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds % 1) * 10);
+  return `${m}:${String(s).padStart(2, '0')}.${ms}`;
+}
+
+async function trimVideo() {
+  const postId = state.generatedPost?.post?.id;
+  if (!postId) return;
+
+  if (trimState.startTime === 0 && trimState.endTime === trimState.duration) {
+    showStatus('Adjust the trim sliders first', true);
+    return;
+  }
+
+  const btn = document.getElementById('btn-trim');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Trimming...';
+  showStatus('Trimming video...');
+  addLog('info', `Trimming video: ${formatTime(trimState.startTime)} → ${formatTime(trimState.endTime)}`);
+
+  try {
+    const res = await fetch(`/api/posts/${postId}/trim-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startTime: trimState.startTime,
+        endTime: trimState.endTime,
+        mediaIndex: 0,
+      }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Trim failed');
+
+    // Update state with trimmed video
+    state.generatedPost.mediaUrls = result.mediaUrls;
+    if (state.generatedPost.post) {
+      state.generatedPost.post.media_urls = result.mediaUrls;
+    }
+
+    addLog('success', `Video trimmed successfully: ${result.trimmedUrl}`);
+    showStatus('Video trimmed!');
+    setTimeout(() => hideStatus(), 2000);
+
+    renderPreview();
+  } catch (err) {
+    addLog('error', `Trim failed: ${err.message}`);
+    showStatus('Trim failed: ' + err.message, true);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '✂️ Trim & Save';
+}
+
+// ===== Post History =====
 async function loadPostFromHistory(postId) {
   const post = state.historyPosts?.find(p => p.id === postId);
   if (!post) return;
