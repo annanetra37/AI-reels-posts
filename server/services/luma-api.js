@@ -34,6 +34,12 @@ async function lumaGet(path) {
  * @param {string} [endImageUrl] - Image for frame1 (end of video) — creates a transition
  * @param {string} [duration] - '5s' or '9s' (default '5s')
  */
+let lumaResolution = '1080p';
+
+function setResolution(res) {
+  lumaResolution = ['540p', '720p', '1080p'].includes(res) ? res : '1080p';
+}
+
 async function generateVideo(prompt, startImageUrl, endImageUrl, duration = '5s') {
   const keyframes = {};
   if (startImageUrl) keyframes.frame0 = { type: 'image', url: startImageUrl };
@@ -42,7 +48,7 @@ async function generateVideo(prompt, startImageUrl, endImageUrl, duration = '5s'
   const body = {
     prompt,
     model: 'ray-flash-2',
-    resolution: '720p',
+    resolution: lumaResolution,
     duration,
     ...(Object.keys(keyframes).length > 0 ? { keyframes } : {}),
   };
@@ -101,4 +107,4 @@ async function pollGeneration(generationId, _submission) {
   }
 }
 
-module.exports = { generateVideo, generateImage, addAudio, pollGeneration };
+module.exports = { generateVideo, generateImage, addAudio, pollGeneration, setResolution };

@@ -115,6 +115,14 @@
       </div>
 
       <div class="options-group">
+        <label>Video Quality</label>
+        <div class="chip-group" id="video-quality-chips">
+          <div class="chip" data-value="720p" onclick="selectVideoQuality(this)">720p <span style="font-size:0.7rem;opacity:0.7">Fast & Cheap</span></div>
+          <div class="chip selected" data-value="1080p" onclick="selectVideoQuality(this)">1080p <span style="font-size:0.7rem;opacity:0.7">HD</span></div>
+        </div>
+      </div>
+
+      <div class="options-group">
         <label>Music</label>
         <div class="chip-group" id="music-chips">
           <div class="chip selected" data-value="none" onclick="selectMusic(this)">No Music</div>

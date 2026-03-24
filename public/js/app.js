@@ -7,6 +7,7 @@ const state = {
   postType: null,
   postStyle: null,
   videoModel: 'luma',
+  videoQuality: '1080p',
   music: 'none',
   languages: new Set(),
   currentStep: 1,
@@ -342,6 +343,12 @@ function selectVideoModel(el) {
   state.videoModel = el.dataset.value;
 }
 
+function selectVideoQuality(el) {
+  document.querySelectorAll('#video-quality-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.videoQuality = el.dataset.value;
+}
+
 function selectMusic(el) {
   document.querySelectorAll('#music-chips .chip').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
@@ -437,6 +444,7 @@ async function generatePost() {
       postType: state.postType,
       postStyle: state.postStyle,
       videoModel: state.videoModel,
+      videoQuality: state.videoQuality,
       languages: [...state.languages],
       selectedPhotos: state.selectedPhotos,
       music: state.music,
@@ -840,6 +848,7 @@ async function regenerateVideoOnly() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         videoModel: state.videoModel,
+        videoQuality: state.videoQuality,
         music: state.music,
       }),
     });

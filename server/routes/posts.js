@@ -9,7 +9,7 @@ const { toPublicUrl } = require('../services/upload');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
-  const { businessIds, postType, postStyle, videoModel: rawVideoModel, languages, selectedPhotos, customDescription, music } = req.body;
+  const { businessIds, postType, postStyle, videoModel: rawVideoModel, videoQuality, languages, selectedPhotos, customDescription, music } = req.body;
   const videoModel = rawVideoModel || 'luma';
 
   if (!businessIds?.length || !postType || !postStyle || !languages?.length) {
@@ -80,6 +80,7 @@ router.post('/generate', async (req, res) => {
 
       // Step 3b: Call video provider API to generate actual media
       const provider = getProvider(videoModel);
+      if (provider.api.setResolution) provider.api.setResolution(videoQuality || '1080p');
       const { generateVideo, generateImage, addAudio, pollGeneration } = provider.api;
 
       if (!isConfigured(videoModel)) {
@@ -268,7 +269,7 @@ router.post('/generate', async (req, res) => {
 
 // POST /api/posts/:id/regenerate-video — regenerate only the video, keep caption
 router.post('/:id/regenerate-video', async (req, res) => {
-  const { videoModel: rawVideoModel, music } = req.body;
+  const { videoModel: rawVideoModel, videoQuality, music } = req.body;
   const videoModel = rawVideoModel || 'luma';
 
   // SSE for real-time updates
@@ -330,6 +331,7 @@ router.post('/:id/regenerate-video', async (req, res) => {
 
     // Generate video
     const provider = getProvider(videoModel);
+    if (provider.api.setResolution) provider.api.setResolution(videoQuality || '1080p');
     const { generateVideo, pollGeneration, addAudio } = provider.api;
     let mediaUrls = [];
 

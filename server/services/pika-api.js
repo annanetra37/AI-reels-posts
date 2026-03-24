@@ -71,6 +71,13 @@ async function pollFal(submission) {
   }
 }
 
+// Resolution setting — configurable via setResolution()
+let pikaResolution = '1080p';
+
+function setResolution(res) {
+  pikaResolution = res === '720p' ? '720p' : '1080p';
+}
+
 // ── Public API (mirrors luma-api.js interface) ──────────────────────────────
 
 /**
@@ -89,7 +96,7 @@ async function generateVideo(prompt, startImageUrl, endImageUrl, duration = '5s'
     const submission = await falSubmit('fal-ai/pika/v2.2/image-to-video', {
       image_url: startImageUrl,
       prompt,
-      resolution: '720p',
+      resolution: pikaResolution,
       duration: durationSec,
     });
     return { id: submission.request_id, _submission: submission };
@@ -99,7 +106,7 @@ async function generateVideo(prompt, startImageUrl, endImageUrl, duration = '5s'
   const submission = await falSubmit('fal-ai/pika/v2.2/text-to-video', {
     prompt,
     aspect_ratio: '9:16',  // vertical for reels
-    resolution: '720p',
+    resolution: pikaResolution,
     duration: durationSec,
   });
   return { id: submission.request_id, _submission: submission };
@@ -145,4 +152,4 @@ async function pollGeneration(generationId, _submission) {
   };
 }
 
-module.exports = { generateVideo, generateImage, addAudio, pollGeneration };
+module.exports = { generateVideo, generateImage, addAudio, pollGeneration, setResolution };
