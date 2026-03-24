@@ -1,9 +1,11 @@
 /**
- * Meta Graph API integration for Instagram publishing.
+ * Meta Graph API integration for Instagram & Facebook publishing.
  * Docs: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing
+ * Facebook: https://developers.facebook.com/docs/pages-api/posts
  */
 
 const IG_ACCOUNT_ID = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
+const FB_PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const GRAPH_URL = 'https://graph.facebook.com/v19.0';
 
@@ -115,4 +117,72 @@ async function publishCarousel({ caption, mediaUrls }) {
   return result;
 }
 
-module.exports = { publishToInstagram };
+// ===== Facebook Page Publishing =====
+
+async function publishToFacebook({ postType, caption, mediaUrls }) {
+  if (!FB_PAGE_ID || !ACCESS_TOKEN) {
+    throw new Error('Facebook credentials not configured. Set FACEBOOK_PAGE_ID and META_ACCESS_TOKEN.');
+  }
+
+  if (!mediaUrls?.length) {
+    throw new Error('No media URLs provided for Facebook publishing.');
+  }
+
+  if (postType === 'reel') {
+    return fbPublishVideo({ caption, videoUrl: mediaUrls[0] });
+  }
+
+  // For image, story, carousel — post photos to the page
+  if (mediaUrls.length === 1) {
+    return fbPublishPhoto({ caption, imageUrl: mediaUrls[0] });
+  }
+
+  // Multiple images — upload each as unpublished, then create a multi-photo post
+  return fbPublishMultiPhoto({ caption, imageUrls: mediaUrls });
+}
+
+async function fbPublishPhoto({ caption, imageUrl }) {
+  return graphFetch(`/${FB_PAGE_ID}/photos`, {
+    url: imageUrl,
+    message: caption,
+    published: true,
+  });
+}
+
+async function fbPublishMultiPhoto({ caption, imageUrls }) {
+  // Step 1: Upload each photo as unpublished
+  const photoIds = [];
+  for (const url of imageUrls) {
+    const photo = await graphFetch(`/${FB_PAGE_ID}/photos`, {
+      url,
+      published: false,
+    });
+    photoIds.push(photo.id);
+  }
+
+  // Step 2: Create a feed post attaching all photos
+  const attachments = {};
+  photoIds.forEach((id, i) => {
+    attachments[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
+  });
+
+  // graphFetch sends JSON body, but multi-photo needs form-style params
+  // Use the feed endpoint with attached_media
+  const body = { message: caption };
+  photoIds.forEach((id, i) => {
+    body[`attached_media[${i}]`] = `{"media_fbid":"${id}"}`;
+  });
+
+  return graphFetch(`/${FB_PAGE_ID}/feed`, body);
+}
+
+async function fbPublishVideo({ caption, videoUrl }) {
+  // Upload video to Facebook page
+  const result = await graphFetch(`/${FB_PAGE_ID}/videos`, {
+    file_url: videoUrl,
+    description: caption,
+  });
+  return result;
+}
+
+module.exports = { publishToInstagram, publishToFacebook };

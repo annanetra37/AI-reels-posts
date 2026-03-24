@@ -255,11 +255,20 @@
           <h3>Edit Hashtags</h3>
           <textarea id="edit-hashtags" rows="3" placeholder="Hashtags will appear here..."></textarea>
 
-          <div class="btn-row" style="margin-top: 20px">
+          <div class="publish-targets" style="margin-top: 16px; display: flex; gap: 16px; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+              <input type="checkbox" id="publish-instagram" checked> Instagram
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.85rem;">
+              <input type="checkbox" id="publish-facebook"> Facebook Page
+            </label>
+          </div>
+
+          <div class="btn-row" style="margin-top: 12px">
             <button class="btn btn-secondary" onclick="goToStep(3)">&larr; Edit Config</button>
             <button class="btn btn-primary" onclick="regeneratePost()">🔄 Regenerate</button>
             <button class="btn btn-success" id="btn-publish" onclick="publishPost()">
-              📱 Post to Instagram
+              📱 Publish
             </button>
           </div>
         </div>

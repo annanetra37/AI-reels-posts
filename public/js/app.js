@@ -662,10 +662,22 @@ async function publishPost() {
     return;
   }
 
+  const toInstagram = document.getElementById('publish-instagram').checked;
+  const toFacebook = document.getElementById('publish-facebook').checked;
+
+  if (!toInstagram && !toFacebook) {
+    showStatus('Select at least one platform to publish to', true);
+    return;
+  }
+
+  const targets = [];
+  if (toInstagram) targets.push('Instagram');
+  if (toFacebook) targets.push('Facebook');
+
   const btn = document.getElementById('btn-publish');
   btn.disabled = true;
   btn.innerHTML = '<div class="status-spinner" style="width:16px;height:16px"></div> Publishing...';
-  showStatus('Publishing to Instagram...');
+  showStatus(`Publishing to ${targets.join(' & ')}...`);
 
   try {
     // Save edits first
@@ -681,16 +693,19 @@ async function publishPost() {
     // Publish
     const res = await fetch(`/api/posts/${state.generatedPost.post.id}/publish`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instagram: toInstagram, facebook: toFacebook }),
     });
 
     const result = await res.json();
     if (result.success) {
-      showStatus('Successfully posted to Instagram!');
-      // Hide spinner and auto-dismiss status bar
+      const posted = [];
+      if (result.instagramId) posted.push('Instagram');
+      if (result.facebookId) posted.push('Facebook');
+      showStatus(`Successfully posted to ${posted.join(' & ')}!`);
       document.getElementById('status-spinner').style.display = 'none';
       setTimeout(() => hideStatus(), 3000);
       btn.innerHTML = '✅ Posted!';
-      // Refresh history to show updated status
       fetchPostHistory();
     } else {
       throw new Error(result.error || 'Publishing failed');
@@ -698,7 +713,7 @@ async function publishPost() {
   } catch (err) {
     showStatus('Publishing failed: ' + err.message, true);
     btn.disabled = false;
-    btn.innerHTML = '📱 Post to Instagram';
+    btn.innerHTML = '📱 Publish';
   }
 }
 
