@@ -266,6 +266,222 @@ router.post('/generate', async (req, res) => {
   }
 });
 
+// POST /api/posts/:id/regenerate-video — regenerate only the video, keep caption
+router.post('/:id/regenerate-video', async (req, res) => {
+  const { videoModel: rawVideoModel, music } = req.body;
+  const videoModel = rawVideoModel || 'luma';
+
+  // SSE for real-time updates
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (event === 'log' || event === 'status') {
+      const prefix = event === 'status' ? '[STATUS]' : `[${(data.level || 'info').toUpperCase()}]`;
+      console.log(`${prefix} ${data.message}`);
+    }
+  };
+
+  try {
+    // Load existing post
+    const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
+    if (!rows.length) {
+      send('error', { message: 'Post not found' });
+      res.end();
+      return;
+    }
+
+    const post = rows[0];
+    const selectedPhotos = post.selected_photos || [];
+    const postType = post.post_type;
+    const postStyle = post.post_style;
+
+    send('status', { stage: 'luma', message: '🎬 Regenerating creative brief...' });
+
+    // Fetch business details for the creative brief
+    const { rows: businesses } = await smePool.query(
+      'SELECT id, name, category, description, short_tagline, tags, emoji, city, country FROM businesses WHERE id = ANY($1)',
+      [post.business_ids]
+    );
+
+    // Parse caption back
+    let captionResult = {};
+    try {
+      captionResult = { caption: JSON.parse(post.caption), hashtags: post.hashtags };
+    } catch {
+      captionResult = { caption: { en: post.caption || '' }, hashtags: post.hashtags };
+    }
+
+    // Generate a new creative brief
+    const lumaResult = await generateLumaPrompt({
+      businesses,
+      postType,
+      postStyle,
+      selectedPhotos,
+      captionResult,
+      music: music || 'none',
+    });
+    send('log', { level: 'success', message: `New brief ready — style: "${lumaResult.style || 'N/A'}", mood: "${lumaResult.mood || 'N/A'}"` });
+    send('luma', lumaResult);
+
+    // Generate video
+    const provider = getProvider(videoModel);
+    const { generateVideo, pollGeneration, addAudio } = provider.api;
+    let mediaUrls = [];
+
+    if (!isConfigured(videoModel)) {
+      send('log', { level: 'warn', message: `${provider.name} not configured — ${provider.envKey} not set in .env.` });
+    } else {
+      send('status', { stage: 'luma_generating', message: `🎨 ${provider.name} is generating your video...` });
+
+      const publicPhotos = (await Promise.all(
+        selectedPhotos.map(p => toPublicUrl(p))
+      )).filter(Boolean);
+
+      if (publicPhotos.length === 0) {
+        send('log', { level: 'warn', message: 'No public reference images available.' });
+      } else {
+        const pairs = [];
+        if (postStyle === 'animation') {
+          pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
+        } else if (publicPhotos.length === 1) {
+          pairs.push({ start: publicPhotos[0], end: null, duration: '5s' });
+        } else if (publicPhotos.length === 2) {
+          pairs.push({ start: publicPhotos[0], end: publicPhotos[1], duration: '9s' });
+        } else {
+          for (let i = 0; i < publicPhotos.length; i += 2) {
+            if (i + 1 < publicPhotos.length) {
+              pairs.push({ start: publicPhotos[i], end: publicPhotos[i + 1], duration: '9s' });
+            } else {
+              pairs.push({ start: publicPhotos[i], end: null, duration: '5s' });
+            }
+          }
+        }
+
+        const segments = lumaResult.segments || [{ prompt: lumaResult.prompt }];
+        const generations = [];
+
+        for (let i = 0; i < pairs.length; i++) {
+          const pair = pairs[i];
+          const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
+
+          send('log', { level: 'info', message: `Segment ${i + 1}/${pairs.length}: ${pair.duration} video...` });
+          const gen = await generateVideo(segmentPrompt, pair.start, pair.end, pair.duration);
+          send('log', { level: 'info', message: `${provider.name} generation started (ID: ${gen.id}). Polling...` });
+
+          const completed = await pollGeneration(gen.id, gen._submission);
+          generations.push(gen);
+          const videoUrl = completed.assets?.video || completed.video?.url || null;
+          if (videoUrl) {
+            mediaUrls.push(videoUrl);
+            send('log', { level: 'success', message: `Segment ${i + 1} ready: ${videoUrl}` });
+          }
+        }
+
+        // Audio
+        if (music === 'auto' && generations.length > 0 && provider.supportsAudio) {
+          const audioPrompt = lumaResult.musicSuggestion || 'upbeat modern background music matching the brand energy';
+          send('status', { stage: 'luma_audio', message: '🎵 Adding AI-generated music...' });
+          for (let i = 0; i < generations.length; i++) {
+            try {
+              const audioGen = await addAudio(generations[i].id, audioPrompt);
+              const audioId = audioGen.id || generations[i].id;
+              const audioCompleted = await pollGeneration(audioId, audioGen._submission);
+              const audioVideoUrl = audioCompleted.assets?.video || null;
+              if (audioVideoUrl) mediaUrls[i] = audioVideoUrl;
+            } catch (audioErr) {
+              send('log', { level: 'warn', message: `Audio failed: ${audioErr.message}` });
+            }
+          }
+        }
+      }
+    }
+
+    // Update post in DB with new media
+    if (mediaUrls.length > 0) {
+      await postsPool.query(
+        'UPDATE generated_posts SET media_urls = $1, luma_prompt = $2, luma_result_url = $3 WHERE id = $4',
+        [mediaUrls, lumaResult?.prompt || null, mediaUrls[0], post.id]
+      );
+    }
+
+    send('complete', { post: { ...post, media_urls: mediaUrls }, mediaUrls });
+    send('status', { stage: 'done', message: '✅ Video regenerated!' });
+    res.end();
+  } catch (err) {
+    console.error('Regenerate video error:', err);
+    send('log', { level: 'error', message: `ERROR: ${err.message}` });
+    send('error', { message: err.message || 'Video regeneration failed' });
+    res.end();
+  }
+});
+
+// POST /api/posts/:id/trim-video — trim a video using ffmpeg
+router.post('/:id/trim-video', async (req, res) => {
+  const { startTime, endTime, mediaIndex } = req.body;
+  const idx = mediaIndex || 0;
+
+  try {
+    const { rows } = await postsPool.query('SELECT * FROM generated_posts WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Post not found' });
+
+    const post = rows[0];
+    const mediaUrls = post.media_urls || [];
+    const videoUrl = mediaUrls[idx];
+    if (!videoUrl) return res.status(400).json({ error: 'No video at that index' });
+
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+
+    // Download video to temp file
+    const tmpDir = path.join(__dirname, '../../tmp');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+    const inputPath = path.join(tmpDir, `trim_input_${post.id}_${idx}.mp4`);
+    const outputPath = path.join(tmpDir, `trim_output_${post.id}_${idx}.mp4`);
+
+    const videoRes = await fetch(videoUrl);
+    const buffer = Buffer.from(await videoRes.arrayBuffer());
+    fs.writeFileSync(inputPath, buffer);
+
+    // Trim with ffmpeg
+    const duration = (endTime - startTime).toFixed(2);
+    execSync(`ffmpeg -y -i "${inputPath}" -ss ${startTime.toFixed(2)} -t ${duration} -c copy "${outputPath}"`, {
+      timeout: 30000,
+    });
+
+    // Upload trimmed video to Cloudinary
+    const { cloudinary } = require('../services/cloudinary');
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload(outputPath, {
+        resource_type: 'video',
+        folder: 'trimmed-reels',
+      }, (err, result) => err ? reject(err) : resolve(result));
+    });
+
+    // Clean up temp files
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(outputPath); } catch {}
+
+    // Update DB
+    mediaUrls[idx] = uploadResult.secure_url;
+    await postsPool.query(
+      'UPDATE generated_posts SET media_urls = $1, luma_result_url = $2 WHERE id = $3',
+      [mediaUrls, mediaUrls[0], post.id]
+    );
+
+    res.json({ success: true, mediaUrls, trimmedUrl: uploadResult.secure_url });
+  } catch (err) {
+    console.error('Trim error:', err);
+    res.status(500).json({ error: err.message || 'Trim failed' });
+  }
+});
+
 // POST /api/posts/:id/publish — publish to Instagram via Meta Graph API
 router.post('/:id/publish', async (req, res) => {
   console.log(`[PUBLISH] Starting publish for post ID: ${req.params.id}`);
