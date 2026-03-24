@@ -104,6 +104,14 @@
       </div>
 
       <div class="options-group">
+        <label>Video Model <span style="font-weight:400;color:var(--text-muted)">(for reels & animations)</span></label>
+        <div class="chip-group" id="video-model-chips">
+          <div class="chip selected" data-value="luma" onclick="selectVideoModel(this)">LumaLabs</div>
+          <div class="chip" data-value="pika" onclick="selectVideoModel(this)">Pika 2.2</div>
+        </div>
+      </div>
+
+      <div class="options-group">
         <label>Music</label>
         <div class="chip-group" id="music-chips">
           <div class="chip selected" data-value="none" onclick="selectMusic(this)">No Music</div>

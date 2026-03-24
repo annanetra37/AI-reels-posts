@@ -83,7 +83,7 @@ async function addAudio(generationId, prompt) {
  * Generous 10-minute timeout — if LumaLabs is stuck beyond that, it's an outage.
  * Normal generation takes 2-5 minutes.
  */
-async function pollGeneration(generationId) {
+async function pollGeneration(generationId, _submission) {
   const MAX_WAIT_MS = 15 * 60 * 1000; // 15 minutes
   const start = Date.now();
   while (true) {
