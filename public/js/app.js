@@ -558,17 +558,6 @@ function renderPreview() {
     } else {
       mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
     }
-  } else if (postType === 'story' && state.selectedPhotos.length > 1) {
-    // Multi-story preview: show all photos as a horizontal strip
-    mediaEl.innerHTML = `
-      <div class="story-strip">
-        ${state.selectedPhotos.map((url, i) => `
-          <div class="story-strip-item">
-            <img src="${url}" alt="Story ${i + 1}">
-            <span class="story-strip-num">${i + 1}</span>
-          </div>
-        `).join('')}
-      </div>`;
   } else if (state.selectedPhotos.length > 0) {
     mediaEl.innerHTML = `<img src="${state.selectedPhotos[0]}" alt="Post media">`;
   }

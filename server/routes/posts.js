@@ -6,6 +6,8 @@ const { generateLumaPrompt } = require('../services/luma-agent');
 const { publishToInstagram } = require('../services/meta-api');
 const { getProvider, isConfigured } = require('../services/video-provider');
 const { toPublicUrl } = require('../services/upload');
+const { createStoryCollage } = require('../services/story-collage');
+const { uploadBuffer } = require('../services/cloudinary');
 
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
@@ -60,7 +62,17 @@ router.post('/generate', async (req, res) => {
 
     send('caption', captionResult);
 
-    // Step 3: If reel, animation, or carousel, generate LumaLabs prompt
+    // Step 3a: For stories with multiple photos, create a collage image
+    if (postType === 'story' && selectedPhotos?.length > 1) {
+      send('status', { stage: 'collage', message: '🖼️ Creating story collage from your photos...' });
+      send('log', { level: 'info', message: `Compositing ${selectedPhotos.length} photos into a single 1080×1920 story image...` });
+      const collageBuf = await createStoryCollage(selectedPhotos);
+      const { url: collageUrl } = await uploadBuffer(collageBuf, 'story-collages');
+      mediaUrls.push(collageUrl);
+      send('log', { level: 'success', message: `Story collage ready: ${collageUrl}` });
+    }
+
+    // Step 3b: If reel, animation, or carousel, generate LumaLabs prompt
     const needsLuma = postType === 'reel' || postType === 'carousel' || postStyle === 'animation';
     let lumaResult = null;
     if (needsLuma) {
