@@ -9,15 +9,35 @@ const fs = require('fs');
 const path = require('path');
 const { cloudinary } = require('./cloudinary');
 
+const { generateTrackBuffer, getTrackMeta } = require('./sample-tracks');
+
 const TMP_DIR = path.join(__dirname, '../../tmp');
+const SERVER_PORT = process.env.PORT || 3000;
 
 function ensureTmpDir() {
   if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 }
 
 async function downloadToFile(url, filePath) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
+  // Handle built-in sample tracks (relative URLs like /api/music/sample/xyz.wav)
+  const sampleMatch = url.match(/\/api\/music\/sample\/([^.]+)\.wav/);
+  if (sampleMatch) {
+    const trackId = sampleMatch[1];
+    if (getTrackMeta(trackId)) {
+      const buf = generateTrackBuffer(trackId);
+      fs.writeFileSync(filePath, buf);
+      return filePath;
+    }
+  }
+
+  // Handle relative URLs by making them absolute against localhost
+  let fullUrl = url;
+  if (url.startsWith('/')) {
+    fullUrl = `http://127.0.0.1:${SERVER_PORT}${url}`;
+  }
+
+  const res = await fetch(fullUrl);
+  if (!res.ok) throw new Error(`Download failed: ${res.status} ${fullUrl}`);
   const buf = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(filePath, buf);
   return filePath;
