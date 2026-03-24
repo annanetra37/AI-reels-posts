@@ -618,8 +618,16 @@ router.post('/:id/publish', async (req, res) => {
       return res.status(500).json({ error: errors.join('; ') });
     }
 
+    // Check if this is a repost (post was previously published to at least one platform)
+    const isRepost = post.posted_to_ig || post.posted_to_fb || post.status === 'posted' || post.status === 'partial';
+
+    // Build repost history entry
+    const publishedPlatforms = [];
+    if (igSucceeded) publishedPlatforms.push('ig');
+    if (fbSucceeded) publishedPlatforms.push('fb');
+    const historyEntry = { at: new Date().toISOString(), platforms: publishedPlatforms };
+
     // Update DB — per-platform tracking + overall status
-    // Use COALESCE to preserve previously set platform flags (for reposting)
     const status = allRequestedSucceeded ? 'posted' : 'partial';
     await postsPool.query(`
       UPDATE generated_posts
@@ -628,13 +636,14 @@ router.post('/:id/publish', async (req, res) => {
           fb_post_id = COALESCE($3, fb_post_id),
           posted_to_ig = posted_to_ig OR $4,
           posted_to_fb = posted_to_fb OR $5,
+          repost_count = repost_count + CASE WHEN $7 THEN 1 ELSE 0 END,
+          repost_history = repost_history || $8::jsonb,
           posted_at = COALESCE(posted_at, NOW())
       WHERE id = $6
-    `, [status, instagramId, facebookId, igSucceeded, fbSucceeded, post.id]);
+    `, [status, instagramId, facebookId, igSucceeded, fbSucceeded, post.id, isRepost, JSON.stringify(historyEntry)]);
 
     // If all platforms that were EVER requested are now posted, upgrade to 'posted'
     if (status === 'partial') {
-      // Check if ALL platforms are now covered
       const { rows: [updated] } = await postsPool.query(
         'SELECT posted_to_ig, posted_to_fb FROM generated_posts WHERE id = $1', [post.id]
       );
@@ -643,12 +652,17 @@ router.post('/:id/publish', async (req, res) => {
       }
     }
 
+    // Fetch final state
+    const { rows: [finalPost] } = await postsPool.query('SELECT repost_count FROM generated_posts WHERE id = $1', [post.id]);
+
     res.json({
       success: true,
       instagramId,
       facebookId,
       postedToIg: igSucceeded,
       postedToFb: fbSucceeded,
+      repostCount: finalPost.repost_count,
+      isRepost,
       errors: errors.length ? errors : undefined,
     });
   } catch (err) {
@@ -674,6 +688,41 @@ router.put('/:id', async (req, res) => {
   } catch (err) {
     console.error('Update error:', err);
     res.status(500).json({ error: 'Failed to update post' });
+  }
+});
+
+// PATCH /api/posts/:id/status — manually change post status (for reposting, etc.)
+router.patch('/:id/status', async (req, res) => {
+  const { status, resetPlatforms } = req.body;
+  const validStatuses = ['draft', 'generated', 'posted', 'partial', 'failed'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+  }
+
+  try {
+    let query, params;
+    if (resetPlatforms) {
+      // Reset platform flags so user can repost to all platforms
+      query = `
+        UPDATE generated_posts
+        SET status = $1, posted_to_ig = FALSE, posted_to_fb = FALSE
+        WHERE id = $2
+        RETURNING *
+      `;
+      params = [status, req.params.id];
+    } else {
+      query = 'UPDATE generated_posts SET status = $1 WHERE id = $2 RETURNING *';
+      params = [status, req.params.id];
+    }
+
+    const { rows } = await postsPool.query(query, params);
+    if (!rows.length) return res.status(404).json({ error: 'Post not found' });
+
+    console.log(`[STATUS] Post #${req.params.id} status manually changed to '${status}'${resetPlatforms ? ' (platforms reset)' : ''}`);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Status update error:', err);
+    res.status(500).json({ error: 'Failed to update status' });
   }
 });
 

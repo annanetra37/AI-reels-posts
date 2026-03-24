@@ -528,6 +528,38 @@ header p {
 .status-badge.partial { background: rgba(251,191,36,0.15); color: #f59e0b; }
 .status-badge.failed { background: rgba(248,113,113,0.15); color: var(--danger); }
 
+.status-select {
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: rgba(148,163,184,0.15);
+  color: var(--text-muted);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: center;
+  min-width: 70px;
+}
+.status-select:hover { border-color: var(--primary); }
+.status-select.posted { background: rgba(52,211,153,0.15); color: var(--success); }
+.status-select.partial { background: rgba(251,191,36,0.15); color: #f59e0b; }
+.status-select.failed { background: rgba(248,113,113,0.15); color: var(--danger); }
+.status-select.generated { background: rgba(124,58,237,0.15); color: var(--primary); }
+.status-select.draft { background: rgba(148,163,184,0.15); color: var(--text-muted); }
+
+.repost-badge {
+  display: inline-block;
+  background: rgba(124,58,237,0.15);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .history-row { transition: var(--transition); }
 .history-row:hover { background: var(--surface-hover); }
 .history-row.selected { background: rgba(124,58,237,0.12); border-left: 3px solid var(--primary); }
