@@ -16,8 +16,10 @@ async function publishToInstagram({ postType, caption, mediaUrls }) {
     throw new Error('No media URLs provided for publishing.');
   }
 
-  if (postType === 'image' || postType === 'story') {
-    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: postType === 'story' });
+  if (postType === 'image') {
+    return publishSingleImage({ caption, imageUrl: mediaUrls[0], isStory: false });
+  } else if (postType === 'story') {
+    return publishStories({ caption, mediaUrls });
   } else if (postType === 'reel') {
     return publishReel({ caption, videoUrl: mediaUrls[0] });
   } else if (postType === 'carousel') {
@@ -65,6 +67,25 @@ async function publishSingleImage({ caption, imageUrl, isStory }) {
     creation_id: container.id,
   });
   return result;
+}
+
+async function publishStories({ caption, mediaUrls }) {
+  // Instagram Stories are published one at a time.
+  // Post each selected photo as a separate story in sequence.
+  let lastResult = null;
+  for (let i = 0; i < mediaUrls.length; i++) {
+    // Only the first story gets the caption (Instagram shows it as text overlay)
+    const storyCaption = i === 0 ? caption : '';
+    const result = await publishSingleImage({
+      caption: storyCaption,
+      imageUrl: mediaUrls[i],
+      isStory: true,
+    });
+    console.log(`[PUBLISH] Story ${i + 1}/${mediaUrls.length} published — ID: ${result.id}`);
+    lastResult = result;
+  }
+  // Return the last published story's result (contains the meta post ID)
+  return lastResult;
 }
 
 async function publishReel({ caption, videoUrl }) {

@@ -551,13 +551,24 @@ function renderPreview() {
   const mediaEl = document.getElementById('preview-media');
   const generatedMedia = state.generatedPost.mediaUrls || [];
   const postType = state.postType || state.generatedPost?.post?.post_type;
-  const hasVideo = generatedMedia.length > 0 && (postType === 'reel' || postType === 'story');
+  const hasVideo = generatedMedia.length > 0 && postType === 'reel';
   if (generatedMedia.length > 0) {
     if (hasVideo && generatedMedia[0]) {
       mediaEl.innerHTML = `<video id="preview-video" src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
     } else {
       mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
     }
+  } else if (postType === 'story' && state.selectedPhotos.length > 1) {
+    // Multi-story preview: show all photos as a horizontal strip
+    mediaEl.innerHTML = `
+      <div class="story-strip">
+        ${state.selectedPhotos.map((url, i) => `
+          <div class="story-strip-item">
+            <img src="${url}" alt="Story ${i + 1}">
+            <span class="story-strip-num">${i + 1}</span>
+          </div>
+        `).join('')}
+      </div>`;
   } else if (state.selectedPhotos.length > 0) {
     mediaEl.innerHTML = `<img src="${state.selectedPhotos[0]}" alt="Post media">`;
   }
