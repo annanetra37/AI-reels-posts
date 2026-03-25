@@ -225,80 +225,90 @@ async function publishToFacebook({ postType, caption, mediaUrls }) {
 }
 
 /**
- * Upload a video to a Facebook Page using the resumable upload protocol.
- * Returns the video ID. Works for both published and unpublished uploads.
- * @param {string} videoUrl - URL of the video file
+ * Upload a video to a Facebook Page.
+ * Uses the simple file_url approach (no upload_phase needed for URL-based uploads).
+ * Falls back to resumable upload if the simple approach fails.
+ * @param {string} videoUrl - Public URL of the video file
  * @param {object} [extraParams] - Additional params (description, published, etc.)
  * @returns {Promise<{id: string}>}
  */
 async function fbUploadVideo(videoUrl, extraParams = {}) {
   const pageToken = await getPageAccessToken();
 
-  // Phase 1: Start — get an upload session
-  const startRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+  // Approach 1: Simple file_url upload (no upload_phase — this is the correct
+  // way to upload via URL on the Facebook Graph API)
+  console.log('[META] Uploading video to Facebook via file_url...');
+  const simpleRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       access_token: pageToken,
-      upload_phase: 'start',
       file_url: videoUrl,
       ...extraParams,
     }),
   });
-  const startData = await startRes.json();
+  const simpleData = await simpleRes.json();
 
-  // Some API versions accept file_url on start and process everything at once
-  if (startData.id && !startData.upload_session_id) {
-    return startData; // Video uploaded in one shot
+  if (simpleData.id) {
+    console.log(`[META] Facebook video uploaded successfully: ${simpleData.id}`);
+    return simpleData;
   }
-  if (startData.error) {
-    // If start with file_url fails, try the simple single-request approach
-    console.warn('[META] Resumable start failed, trying single-request upload...');
-    const simpleRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+
+  if (simpleData.error) {
+    console.warn('[META] Simple file_url upload failed:', simpleData.error.message);
+
+    // Approach 2: Resumable upload protocol (for cases where simple fails)
+    console.log('[META] Trying resumable upload protocol...');
+
+    // Phase 1: Start (without file_url)
+    const startRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         access_token: pageToken,
-        file_url: videoUrl,
+        upload_phase: 'start',
+        file_size: 0, // Unknown size for URL uploads
+      }),
+    });
+    const startData = await startRes.json();
+    if (startData.error) throw new Error(`Facebook video start: ${startData.error.message}`);
+
+    const sessionId = startData.upload_session_id;
+    if (!sessionId) throw new Error('Facebook video upload: no session ID returned');
+
+    // Phase 2: Transfer with file_url
+    const transferRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: pageToken,
         upload_phase: 'transfer',
+        upload_session_id: sessionId,
+        start_offset: 0,
+        file_url: videoUrl,
+      }),
+    });
+    const transferData = await transferRes.json();
+    if (transferData.error) throw new Error(`Facebook video transfer: ${transferData.error.message}`);
+
+    // Phase 3: Finish
+    const finishRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: pageToken,
+        upload_phase: 'finish',
+        upload_session_id: sessionId,
         ...extraParams,
       }),
     });
-    const simpleData = await simpleRes.json();
-    if (simpleData.error) throw new Error(`Facebook video upload: ${simpleData.error.message}`);
-    return simpleData;
+    const finishData = await finishRes.json();
+    if (finishData.error) throw new Error(`Facebook video finish: ${finishData.error.message}`);
+
+    return finishData;
   }
 
-  // Phase 2: Transfer — send the video
-  const sessionId = startData.upload_session_id;
-  const transferRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      access_token: pageToken,
-      upload_phase: 'transfer',
-      upload_session_id: sessionId,
-      file_url: videoUrl,
-    }),
-  });
-  const transferData = await transferRes.json();
-  if (transferData.error) throw new Error(`Facebook video transfer: ${transferData.error.message}`);
-
-  // Phase 3: Finish
-  const finishRes = await fetch(`${GRAPH_URL}/${FB_PAGE_ID}/videos`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      access_token: pageToken,
-      upload_phase: 'finish',
-      upload_session_id: sessionId,
-      ...extraParams,
-    }),
-  });
-  const finishData = await finishRes.json();
-  if (finishData.error) throw new Error(`Facebook video finish: ${finishData.error.message}`);
-
-  return finishData;
+  throw new Error('Facebook video upload: unexpected response');
 }
 
 async function fbPublishPhotoStory({ caption, imageUrl }) {
