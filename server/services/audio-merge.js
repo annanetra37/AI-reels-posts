@@ -74,8 +74,20 @@ async function mergeAudioWithVideo(videoUrl, audioUrl, opts = {}) {
       downloadToFile(audioUrl, audioPath),
     ]);
 
-    if (replaceAudio) {
-      // Replace: use only the music track
+    // Probe whether the video has an audio stream
+    let hasAudio = false;
+    try {
+      const probe = execSync(
+        `ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "${videoPath}"`,
+        { timeout: 10000 }
+      ).toString().trim();
+      hasAudio = probe.length > 0;
+    } catch {
+      hasAudio = false;
+    }
+
+    if (replaceAudio || !hasAudio) {
+      // Replace audio entirely, or video has no audio — just add the music track
       execSync(
         `ffmpeg -y -i "${videoPath}" -i "${audioPath}" -c:v copy -map 0:v:0 -map 1:a:0 -shortest "${outputPath}"`,
         { timeout: 60000 }
