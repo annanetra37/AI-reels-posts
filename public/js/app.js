@@ -104,6 +104,37 @@ function updateSMECount() {
   document.querySelectorAll('.btn-step1-next').forEach(btn => btn.disabled = count === 0);
 }
 
+/**
+ * Remove any selectedPhotos that don't belong to currently selected SMEs.
+ * This handles the case where a user selects photos, goes back, deselects
+ * an SME, and returns — stale photo selections from that SME are cleaned up.
+ */
+function cleanupSelectedPhotos() {
+  if (state.selectedPhotos.length === 0) return;
+
+  // Build set of all valid photo URLs from currently selected SMEs
+  const validUrls = new Set();
+  for (const bizId of state.selectedSMEs) {
+    const photos = state.photos[bizId];
+    if (!photos) continue;
+    if (photos.logo) validUrls.add(photos.logo);
+    if (photos.mainProductPhoto) validUrls.add(photos.mainProductPhoto);
+    for (const pp of (photos.productPhotos || [])) {
+      if (pp.photo) validUrls.add(pp.photo);
+    }
+  }
+
+  // If we have cached photo data, filter strictly; otherwise keep as-is
+  // (photos will be validated after gallery renders)
+  if (validUrls.size > 0) {
+    const before = state.selectedPhotos.length;
+    state.selectedPhotos = state.selectedPhotos.filter(url => validUrls.has(url));
+    if (state.selectedPhotos.length !== before) {
+      console.log(`[PHOTOS] Cleaned up ${before - state.selectedPhotos.length} stale photo selections`);
+    }
+  }
+}
+
 // ===== Photo Gallery =====
 async function renderPhotoGallery() {
   const container = document.getElementById('photos-container');
@@ -149,6 +180,10 @@ async function renderPhotoGallery() {
   }
 
   container.innerHTML = html;
+
+  // Second cleanup pass: now that all photos are fetched, remove any
+  // selectedPhotos that don't exist in the current gallery
+  cleanupSelectedPhotos();
   updatePhotoCount();
 }
 
@@ -431,7 +466,11 @@ function goToStep(step) {
   state.currentStep = step;
 
   // Load data for step
-  if (step === 2) renderPhotoGallery();
+  if (step === 2) {
+    // Clean up selectedPhotos: remove any photos from deselected SMEs
+    cleanupSelectedPhotos();
+    renderPhotoGallery();
+  }
   if (step === 4) fetchPostHistory();
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
