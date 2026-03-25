@@ -192,11 +192,25 @@ router.post('/generate', async (req, res) => {
               const segmentPrompt = segments[i]?.prompt || lumaResult.prompt;
 
               send('log', { level: 'info', message: `Segment ${i + 1}/${pairs.length}: ${pair.duration} video${pair.end ? ' (transition between 2 photos)' : ' (single photo)'}...` });
-              const gen = await generateVideo(segmentPrompt, pair.start, pair.end, pair.duration);
-              send('log', { level: 'info', message: `${provider.name} generation started (ID: ${gen.id}). Polling for completion...` });
 
-              const completed = await pollGeneration(gen.id, gen._submission);
-              generations.push(gen);
+              // Retry once on Luma failure (their jobs sometimes fail transiently)
+              let completed;
+              for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                  const gen_attempt = await generateVideo(segmentPrompt, pair.start, pair.end, pair.duration);
+                  send('log', { level: 'info', message: `${provider.name} generation started (ID: ${gen_attempt.id}, attempt ${attempt}). Polling...` });
+                  completed = await pollGeneration(gen_attempt.id, gen_attempt._submission);
+                  generations.push(gen_attempt);
+                  break;
+                } catch (lumaErr) {
+                  if (attempt < 2) {
+                    send('log', { level: 'warn', message: `${provider.name} attempt ${attempt} failed: ${lumaErr.message}. Retrying...` });
+                    await new Promise(r => setTimeout(r, 3000));
+                  } else {
+                    throw lumaErr;
+                  }
+                }
+              }
               const videoUrl = completed.assets?.video || completed.video?.url || null;
               if (videoUrl) {
                 mediaUrls.push(videoUrl);

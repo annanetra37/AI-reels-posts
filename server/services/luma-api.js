@@ -96,7 +96,9 @@ async function pollGeneration(generationId, _submission) {
     const gen = await lumaGet(`/generations/${generationId}`);
     if (gen.state === 'completed') return gen;
     if (gen.state === 'failed') {
-      throw new Error(`LumaLabs generation failed: ${gen.failure_reason || 'unknown reason'}`);
+      const reason = gen.failure_reason || gen.error || 'unknown reason';
+      console.error(`[LUMA] Generation ${generationId} failed:`, JSON.stringify(gen, null, 2));
+      throw new Error(`LumaLabs generation failed: ${reason}`);
     }
     const elapsed = Math.round((Date.now() - start) / 1000);
     if (Date.now() - start > MAX_WAIT_MS) {
