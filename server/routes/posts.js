@@ -58,6 +58,31 @@ router.post('/upload-media', mediaUpload.single('file'), async (req, res) => {
   }
 });
 
+// POST /api/posts/manual — create a manual post row with custom content
+router.post('/manual', async (req, res) => {
+  const { caption = '', hashtags = '', postType = 'image', postStyle = 'manual', mediaUrls = [], businessIds = [] } = req.body;
+  try {
+    const { rows } = await postsPool.query(`
+      INSERT INTO generated_posts (business_ids, post_type, post_style, languages, caption, hashtags, media_urls, selected_photos, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $7, 'draft')
+      RETURNING *
+    `, [
+      businessIds.length ? businessIds : [0],
+      postType,
+      postStyle,
+      ['en'],
+      caption,
+      hashtags,
+      mediaUrls,
+    ]);
+    console.log(`[MANUAL] Created manual post #${rows[0].id}`);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Manual post creation error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create post' });
+  }
+});
+
 // POST /api/posts/generate — generate a post (caption, hashtags, luma prompt)
 router.post('/generate', async (req, res) => {
   const { businessIds, postType, postStyle, videoModel: rawVideoModel, videoQuality, languages, selectedPhotos, customDescription, music, uploadedVideoUrl } = req.body;

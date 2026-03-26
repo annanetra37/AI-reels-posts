@@ -445,10 +445,12 @@ function updateGenerateBtn() {
 }
 
 // ===== Step Navigation =====
-function goToStep(step) {
-  // Validate
-  if (step === 2 && state.selectedSMEs.size === 0) return;
-  if (step === 3 && state.selectedPhotos.length === 0) return;
+function goToStep(step, skipValidation) {
+  // Validate (unless explicitly skipped, e.g. for manual posts)
+  if (!skipValidation) {
+    if (step === 2 && state.selectedSMEs.size === 0) return;
+    if (step === 3 && state.selectedPhotos.length === 0) return;
+  }
 
   // Deactivate all
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1277,6 +1279,55 @@ async function trimVideo() {
 
   btn.disabled = false;
   btn.innerHTML = '✂️ Trim & Save';
+}
+
+// ===== Manual Post Creation =====
+async function createManualPost() {
+  try {
+    const res = await fetch('/api/posts/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caption: '',
+        hashtags: '',
+        postType: 'image',
+        postStyle: 'manual',
+        mediaUrls: [],
+        businessIds: [...state.selectedSMEs],
+      }),
+    });
+    const post = await res.json();
+    if (post.error) throw new Error(post.error);
+
+    // Set up state as if this post was just generated
+    state.postType = post.post_type;
+    state.generatedPost = {
+      post: post,
+      caption: { caption: { en: '' }, hashtags: '', hook: '', cta: '' },
+      luma: null,
+      mediaUrls: [],
+    };
+    state.selectedPhotos = [];
+
+    // Navigate to preview and render
+    goToStep(4, true); // skip validation
+    renderPreview();
+
+    // Focus the caption field for immediate editing
+    setTimeout(() => {
+      const captionEl = document.getElementById('edit-caption');
+      if (captionEl) { captionEl.value = ''; captionEl.focus(); }
+      const hashtagsEl = document.getElementById('edit-hashtags');
+      if (hashtagsEl) hashtagsEl.value = '';
+    }, 100);
+
+    updatePublishButton();
+    fetchPostHistory();
+    showStatus('Manual post created — add your content and media below');
+    setTimeout(() => hideStatus(), 3000);
+  } catch (err) {
+    alert('Failed to create post: ' + err.message);
+  }
 }
 
 // ===== Post History =====
