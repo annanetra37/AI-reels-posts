@@ -380,7 +380,10 @@
 
       <!-- Post History -->
       <div style="margin-top: 32px;">
-        <h3 class="section-title">Post History <span id="history-count" class="count-badge" style="display:none">0</span></h3>
+        <h3 class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+          Post History <span id="history-count" class="count-badge" style="display:none">0</span>
+          <button class="btn btn-primary" onclick="createManualPost()" style="padding:5px 14px;font-size:0.8rem;">+ New Manual Post</button>
+        </h3>
         <div id="post-history">
           <p style="color: var(--text-muted); font-size: 0.85rem;">Loading post history...</p>
         </div>
