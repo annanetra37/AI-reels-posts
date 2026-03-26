@@ -382,8 +382,28 @@
       <div style="margin-top: 32px;">
         <h3 class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
           Post History <span id="history-count" class="count-badge" style="display:none">0</span>
-          <button class="btn btn-primary" onclick="createManualPost()" style="padding:5px 14px;font-size:0.8rem;">+ New Manual Post</button>
+          <button class="btn btn-primary" onclick="toggleManualPostForm()" style="padding:5px 14px;font-size:0.8rem;">+ New Manual Post</button>
         </h3>
+
+        <!-- Manual post creation form -->
+        <div id="manual-post-form" style="display:none;padding:12px;margin-bottom:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
+            <div style="flex:1;min-width:140px;">
+              <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px;">SME / Brand</label>
+              <select id="manual-sme" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:var(--bg);color:var(--text);"></select>
+            </div>
+            <div style="min-width:120px;">
+              <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px;">Post Type</label>
+              <select id="manual-type" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;background:var(--bg);color:var(--text);">
+                <option value="image">Image</option>
+                <option value="reel">Reel</option>
+                <option value="story">Story</option>
+                <option value="carousel">Carousel</option>
+              </select>
+            </div>
+            <button class="btn btn-success" onclick="createManualPost()" style="padding:6px 16px;font-size:0.82rem;">Create</button>
+          </div>
+        </div>
         <div id="post-history">
           <p style="color: var(--text-muted); font-size: 0.85rem;">Loading post history...</p>
         </div>

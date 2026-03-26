@@ -1312,7 +1312,27 @@ async function trimVideo() {
 }
 
 // ===== Manual Post Creation =====
+function toggleManualPostForm() {
+  const form = document.getElementById('manual-post-form');
+  const isVisible = form.style.display !== 'none';
+  form.style.display = isVisible ? 'none' : 'block';
+
+  if (!isVisible) {
+    // Populate SME dropdown
+    const select = document.getElementById('manual-sme');
+    select.innerHTML = '<option value="">— No SME —</option>' +
+      state.businesses.map(b =>
+        `<option value="${b.id}" ${state.selectedSMEs.has(b.id) ? 'selected' : ''}>${b.emoji || ''} ${b.name}</option>`
+      ).join('');
+  }
+}
+
 async function createManualPost() {
+  const smeSelect = document.getElementById('manual-sme');
+  const typeSelect = document.getElementById('manual-type');
+  const selectedSmeId = smeSelect?.value ? parseInt(smeSelect.value) : null;
+  const postType = typeSelect?.value || 'image';
+
   try {
     const res = await fetch('/api/posts/manual', {
       method: 'POST',
@@ -1320,14 +1340,17 @@ async function createManualPost() {
       body: JSON.stringify({
         caption: '',
         hashtags: '',
-        postType: 'image',
+        postType,
         postStyle: 'manual',
         mediaUrls: [],
-        businessIds: [...state.selectedSMEs],
+        businessIds: selectedSmeId ? [selectedSmeId] : [...state.selectedSMEs],
       }),
     });
     const post = await res.json();
     if (post.error) throw new Error(post.error);
+
+    // Hide the form
+    document.getElementById('manual-post-form').style.display = 'none';
 
     // Set up state as if this post was just generated
     state.postType = post.post_type;
@@ -1343,6 +1366,18 @@ async function createManualPost() {
     goToStep(4, true); // skip validation
     renderPreview();
 
+    // Set avatar/username from selected SME
+    if (selectedSmeId) {
+      const biz = state.businesses.find(b => b.id === selectedSmeId);
+      if (biz) {
+        document.getElementById('preview-username').textContent = biz.instagram || biz.name.toLowerCase().replace(/\s+/g, '_');
+        if (biz.logo) {
+          document.getElementById('preview-avatar').style.backgroundImage = `url(${biz.logo})`;
+          document.getElementById('preview-avatar').style.backgroundSize = 'cover';
+        }
+      }
+    }
+
     // Focus the caption field for immediate editing
     setTimeout(() => {
       const captionEl = document.getElementById('edit-caption');
@@ -1353,7 +1388,7 @@ async function createManualPost() {
 
     updatePublishButton();
     fetchPostHistory();
-    showStatus('Manual post created — add your content and media below');
+    showStatus(`Manual ${postType} post created — add your content and media`);
     setTimeout(() => hideStatus(), 3000);
   } catch (err) {
     alert('Failed to create post: ' + err.message);
