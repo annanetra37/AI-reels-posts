@@ -810,4 +810,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+// DELETE /api/posts/:id — delete a post
+router.delete('/:id', async (req, res) => {
+  try {
+    const { rows } = await postsPool.query('DELETE FROM generated_posts WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Post not found' });
+    console.log(`[DELETE] Post #${req.params.id} deleted`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete error:', err);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
 module.exports = router;

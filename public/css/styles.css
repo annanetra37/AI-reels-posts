@@ -560,6 +560,20 @@ header p {
   font-weight: 600;
 }
 
+.btn-delete-row {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: var(--transition);
+}
+.btn-delete-row:hover { opacity: 1; color: var(--danger); background: rgba(248,113,113,0.1); }
+
 .history-row { transition: var(--transition); }
 .history-row:hover { background: var(--surface-hover); }
 .history-row.selected { background: rgba(124,58,237,0.12); border-left: 3px solid var(--primary); }
