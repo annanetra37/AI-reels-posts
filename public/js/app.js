@@ -933,6 +933,28 @@ async function resetForRepost() {
   }
 }
 
+// ===== Delete Post =====
+async function deletePost(postId) {
+  if (!confirm(`Delete post #${postId}? This cannot be undone.`)) return;
+
+  try {
+    const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // If the deleted post is currently loaded in preview, clear it
+    if (state.generatedPost?.post?.id === postId) {
+      state.generatedPost = null;
+      const mediaEl = document.getElementById('preview-media');
+      if (mediaEl) mediaEl.innerHTML = '<span style="color: var(--text-muted)">Media preview</span>';
+    }
+
+    fetchPostHistory();
+  } catch (err) {
+    alert('Delete failed: ' + err.message);
+  }
+}
+
 // ===== Status Bar =====
 function showStatus(message, isError) {
   const bar = document.getElementById('status-bar');
@@ -1021,6 +1043,7 @@ function renderPostHistory(posts) {
         <th>Reposts</th>
         <th>Created</th>
         <th>Caption</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -1065,6 +1088,7 @@ function renderPostHistory(posts) {
           <td style="text-align:center">${repostCount > 0 ? `<span class="repost-badge">${repostCount}x</span>` : '—'}</td>
           <td>${date}</td>
           <td style="color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${captionPreview}</td>
+          <td><button class="btn-delete-row" onclick="event.stopPropagation(); deletePost(${p.id})" title="Delete post">&times;</button></td>
         </tr>`;
       }).join('')}
     </tbody>
