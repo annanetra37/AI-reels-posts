@@ -631,24 +631,38 @@ function renderPreview() {
   const mediaEl = document.getElementById('preview-media');
   const generatedMedia = state.generatedPost.mediaUrls || [];
   const postType = state.postType || state.generatedPost?.post?.post_type;
-  const hasVideo = generatedMedia.length > 0 && postType === 'reel';
+
+  // Detect if media is a video by URL extension (not just postType)
+  const firstMedia = generatedMedia[0] || '';
+  const isVideoMedia = /\.(mp4|mov|avi|webm)/i.test(firstMedia);
+  const hasVideo = generatedMedia.length > 0 && (postType === 'reel' || isVideoMedia);
+
   if (generatedMedia.length > 0) {
     if (hasVideo && generatedMedia[0]) {
-      mediaEl.innerHTML = `<video id="preview-video" src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
+      mediaEl.innerHTML = `<video id="preview-video" src="${generatedMedia[0]}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover" crossorigin="anonymous"></video>`;
     } else {
       mediaEl.innerHTML = `<img src="${generatedMedia[0]}" alt="Generated media">`;
     }
   } else if (state.selectedPhotos.length > 0) {
-    mediaEl.innerHTML = `<img src="${state.selectedPhotos[0]}" alt="Post media">`;
+    const firstPhoto = state.selectedPhotos[0];
+    const isPhotoVideo = /\.(mp4|mov|avi|webm)/i.test(firstPhoto);
+    if (isPhotoVideo) {
+      mediaEl.innerHTML = `<video id="preview-video" src="${firstPhoto}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover" crossorigin="anonymous"></video>`;
+    } else {
+      mediaEl.innerHTML = `<img src="${firstPhoto}" alt="Post media">`;
+    }
   }
 
-  // Show/hide video controls
+  // Show/hide video controls — check for actual video element, not just postType
   const videoControls = document.getElementById('video-controls');
-  if (hasVideo || (state.postType === 'reel' || state.postStyle === 'animation')) {
+  const videoEl = document.getElementById('preview-video');
+  const showVideoControls = videoEl || postType === 'reel' || state.postStyle === 'animation';
+
+  if (showVideoControls) {
     videoControls.style.display = 'block';
     syncRegenChips();
-    document.getElementById('trim-panel').style.display = hasVideo ? 'block' : 'none';
-    if (hasVideo) initTrimSlider();
+    document.getElementById('trim-panel').style.display = videoEl ? 'block' : 'none';
+    if (videoEl) initTrimSlider();
   } else {
     videoControls.style.display = 'none';
   }
@@ -1163,49 +1177,65 @@ function initTrimSlider() {
   const video = document.getElementById('preview-video');
   if (!video) return;
 
+  const startSlider = document.getElementById('trim-start');
+  const endSlider = document.getElementById('trim-end');
+  if (!startSlider || !endSlider) return;
+
+  // Reset sliders to a clean state before setting up
+  startSlider.min = 0;
+  endSlider.min = 0;
+
   const setup = () => {
-    trimState.duration = video.duration || 0;
+    const dur = video.duration;
+    if (!dur || !isFinite(dur) || dur <= 0) return;
+
+    trimState.duration = dur;
     trimState.startTime = 0;
-    trimState.endTime = trimState.duration;
+    trimState.endTime = dur;
 
-    const startSlider = document.getElementById('trim-start');
-    const endSlider = document.getElementById('trim-end');
-
-    startSlider.max = trimState.duration;
+    startSlider.max = dur.toFixed(1);
     startSlider.value = 0;
     startSlider.step = 0.1;
 
-    endSlider.max = trimState.duration;
-    endSlider.value = trimState.duration;
+    endSlider.max = dur.toFixed(1);
+    endSlider.value = dur.toFixed(1);
     endSlider.step = 0.1;
 
     updateTrimLabels();
-
-    startSlider.oninput = () => {
-      trimState.startTime = parseFloat(startSlider.value);
-      if (trimState.startTime >= trimState.endTime - 0.5) {
-        trimState.startTime = trimState.endTime - 0.5;
-        startSlider.value = trimState.startTime;
-      }
-      video.currentTime = trimState.startTime;
-      updateTrimLabels();
-    };
-
-    endSlider.oninput = () => {
-      trimState.endTime = parseFloat(endSlider.value);
-      if (trimState.endTime <= trimState.startTime + 0.5) {
-        trimState.endTime = trimState.startTime + 0.5;
-        endSlider.value = trimState.endTime;
-      }
-      video.currentTime = trimState.endTime;
-      updateTrimLabels();
-    };
+    console.log(`[TRIM] Initialized: duration=${dur.toFixed(1)}s`);
   };
 
-  if (video.readyState >= 1) {
+  startSlider.oninput = () => {
+    trimState.startTime = parseFloat(startSlider.value);
+    if (trimState.startTime >= trimState.endTime - 0.5) {
+      trimState.startTime = trimState.endTime - 0.5;
+      startSlider.value = trimState.startTime;
+    }
+    video.currentTime = trimState.startTime;
+    updateTrimLabels();
+  };
+
+  endSlider.oninput = () => {
+    trimState.endTime = parseFloat(endSlider.value);
+    if (trimState.endTime <= trimState.startTime + 0.5) {
+      trimState.endTime = trimState.startTime + 0.5;
+      endSlider.value = trimState.endTime;
+    }
+    video.currentTime = trimState.endTime;
+    updateTrimLabels();
+  };
+
+  // Try immediate setup, otherwise wait for metadata
+  if (video.readyState >= 1 && video.duration > 0) {
     setup();
   } else {
     video.addEventListener('loadedmetadata', setup, { once: true });
+    // Fallback: some videos fire 'durationchange' instead of 'loadedmetadata'
+    video.addEventListener('durationchange', () => {
+      if (video.duration > 0 && trimState.duration === 0) setup();
+    }, { once: true });
+    // Force metadata load
+    video.load();
   }
 }
 
@@ -1666,9 +1696,21 @@ async function handleMediaReplace(event) {
     // Update preview
     const mediaEl = document.getElementById('preview-media');
     if (isVideo) {
-      mediaEl.innerHTML = `<video id="preview-video" src="${newUrl}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover"></video>`;
+      mediaEl.innerHTML = `<video id="preview-video" src="${newUrl}" controls autoplay muted loop style="width:100%;height:100%;object-fit:cover" crossorigin="anonymous"></video>`;
     } else {
       mediaEl.innerHTML = `<img src="${newUrl}" alt="Post media">`;
+    }
+
+    // Show/hide trim panel for videos
+    const videoControls = document.getElementById('video-controls');
+    const trimPanel = document.getElementById('trim-panel');
+    if (isVideo) {
+      videoControls.style.display = 'block';
+      trimPanel.style.display = 'block';
+      trimState = { duration: 0, startTime: 0, endTime: 0 };
+      initTrimSlider();
+    } else {
+      trimPanel.style.display = 'none';
     }
 
     // Save to DB if post exists
