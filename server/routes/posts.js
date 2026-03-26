@@ -577,10 +577,10 @@ router.post('/:id/trim-video', async (req, res) => {
     try { fs.unlinkSync(inputPath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
 
-    // Update DB
+    // Update DB — update both media_urls and selected_photos to keep in sync
     mediaUrls[idx] = uploadResult.secure_url;
     await postsPool.query(
-      'UPDATE generated_posts SET media_urls = $1, luma_result_url = $2 WHERE id = $3',
+      'UPDATE generated_posts SET media_urls = $1, selected_photos = $1, luma_result_url = $2 WHERE id = $3',
       [mediaUrls, mediaUrls[0], post.id]
     );
 
